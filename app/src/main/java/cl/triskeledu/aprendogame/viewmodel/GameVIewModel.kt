@@ -1,29 +1,47 @@
 package cl.triskeledu.aprendogame.viewmodel
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import cl.triskeledu.aprendogame.data.local.AppDatabase
+import cl.triskeledu.aprendogame.data.repository.GameRepository
+import cl.triskeledu.aprendogame.data.repository.GameRepositoryImpl
 import cl.triskeledu.aprendogame.model.PuntoInteres
-import kotlinx.coroutines.flow.MutableStateFlow
+import cl.triskeledu.aprendogame.model.Usuario
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
-class GameViewModel : ViewModel() {
+/**
+ * ViewModel principal del juego conectado al Repositorio de persistencia Room.
+ * Provee el estado reactivo consumido por la interfaz de usuario en Compose.
+ */
+class GameViewModel(
+    application: Application,
+    private val repository: GameRepository = GameRepositoryImpl(AppDatabase.getInstance(application))
+) : AndroidViewModel(application) {
 
-    // Backing property: editable solo aquí, de solo lectura para la interfaz.
-    private val _puntos = MutableStateFlow(puntosDePrueba())
-    val puntos: StateFlow<List<PuntoInteres>> = _puntos.asStateFlow()
+    // Lista reactiva de puntos turísticos proveniente de la base de datos SQLite/Room
+    val puntos: StateFlow<List<PuntoInteres>> = repository.getPuntos()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
 
-    // Marca un punto como completado usando map para crear una lista nueva (inmutable).
-    fun marcarCompletado(id: Int) = _puntos.update { lista ->
-        lista.map { if (it.id == id) it.copy(completado = true) else it }
+    // Perfil y puntajes del usuario observados en tiempo real
+    val usuario: StateFlow<Usuario?> = repository.getUsuario()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = null
+        )
+
+    // Marca un punto como completado y persiste el cambio en Room
+    fun marcarCompletado(id: Int) {
+        viewModelScope.launch {
+            repository.marcarPuntoCompletado(id, puntosRecompensa = 100)
+        }
     }
-
-    // Datos ficticios de prueba. Luego se reemplazarán por Room.
-    private fun puntosDePrueba() = listOf(
-        PuntoInteres(1, "Plaza de Armas", "Centro histórico de Santiago", -33.4372, -70.6506, 520.0),
-        PuntoInteres(2, "Cerro Santa Lucía", "Mirador y parque en el centro", -33.4403, -70.6436, 580.0),
-        PuntoInteres(3, "Cerro San Cristóbal", "El mayor parque urbano de la ciudad", -33.4256, -70.6347, 800.0),
-        PuntoInteres(4, "Palacio de La Moneda", "Sede de gobierno", -33.4429, -70.6539, 521.0),
-        PuntoInteres(5, "Parque Forestal", "Parque junto al río Mapocho", -33.4361, -70.6428, 535.0),
-    )
 }
