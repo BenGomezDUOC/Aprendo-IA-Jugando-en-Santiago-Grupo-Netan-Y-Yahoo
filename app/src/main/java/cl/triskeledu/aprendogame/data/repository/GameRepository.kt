@@ -34,4 +34,8 @@ interface GameRepository {
     fun getUsuario(id: Int = 1): Flow<Usuario?>
     suspend fun sumarPuntos(puntos: Int)
     fun getHistorialVisitas(): Flow<List<VisitaRealizada>>
+
+    // Gestión para Administrador y Generador de Contenido
+    suspend fun crearPunto(punto: PuntoInteres): Long
+    suspend fun crearCapsula(capsula: Capsula): Long
 }

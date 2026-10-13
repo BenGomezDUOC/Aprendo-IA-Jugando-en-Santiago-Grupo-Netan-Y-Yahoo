@@ -85,4 +85,12 @@ class GameRepositoryImpl(
     override fun getHistorialVisitas(): Flow<List<VisitaRealizada>> {
         return visitaDao.getVisitas()
     }
+
+    override suspend fun crearPunto(punto: PuntoInteres): Long {
+        return puntoDao.insertarPunto(punto)
+    }
+
+    override suspend fun crearCapsula(capsula: Capsula): Long {
+        return capsulaDao.insertarCapsula(capsula)
+    }
 }
