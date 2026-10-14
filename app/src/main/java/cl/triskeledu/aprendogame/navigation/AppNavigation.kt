@@ -5,10 +5,11 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import cl.triskeledu.aprendogame.ui.screens.JuegoApp
-import cl.triskeledu.aprendogame.ui.screens.InicioScreen
 import cl.triskeledu.aprendogame.ui.screens.AdministradorScreen
 import cl.triskeledu.aprendogame.ui.screens.ContenidoScreen
+import cl.triskeledu.aprendogame.ui.screens.EscanerQRScreen
+import cl.triskeledu.aprendogame.ui.screens.InicioScreen
+import cl.triskeledu.aprendogame.ui.screens.MapaScreen
 import cl.triskeledu.aprendogame.ui.screens.RegistroJugador
 
 @Composable
@@ -36,7 +37,27 @@ fun AppNavigation(){
         }
 
         composable("registro"){ //Ruta o apodo de la pantalla
-            RegistroJugador() //Pantalla real lo que se dibuja
+            RegistroJugador(
+                onCrearCuenta = { _, _, _, _ ->
+                    navController.navigate("cliente")
+                },
+                onIrAlMapaClick = {
+                    navController.navigate("cliente")
+                }
+            )
+        }
+
+        // Pantalla Principal del Cliente: Mapa y Geolocalización (Módulo Fernando)
+        composable("cliente"){
+            MapaScreen(
+                onEscanearQrClick = { punto ->
+                    navController.navigate("escanear_qr")
+                }
+            )
+        }
+
+        composable("escanear_qr"){
+            EscanerQRScreen()
         }
 
         composable ("administrador"){

@@ -34,6 +34,7 @@ fun RegistroJugador(
     // Se ejecuta al presionar "Crear cuenta". Por defecto no hace nada,
     // así las llamadas actuales a RegistroJugador() siguen compilando.
     onCrearCuenta: (String, String, String, Int) -> Unit = { _, _, _, _ -> },
+    onIrAlMapaClick: () -> Unit = {},
 ) {
 
     // Guarda los datos que escribe el jugador
@@ -173,6 +174,16 @@ fun RegistroJugador(
                 .height(54.dp)
         ) {
             Text("Crear cuenta")
+        }
+
+        // BOTÓN TEMPORAL: Probar mapa directamente (sin tener que llenar datos)
+        androidx.compose.material3.OutlinedButton(
+            onClick = { onIrAlMapaClick() },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp)
+        ) {
+            Text("🗺️ [Prueba] Entrar directo al Mapa")
         }
     }
 }

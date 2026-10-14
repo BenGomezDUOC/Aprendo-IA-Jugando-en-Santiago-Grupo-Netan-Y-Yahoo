@@ -11,6 +11,8 @@ composeBom = "2026.02.01"
 navigationCompose = "2.9.6"
 camarax = "1.6.2"
 mlkitBarcode = "17.3.0"
+osmdroid = "6.1.18"
+playServicesLocation = "21.3.0"
 
 [libraries]
 androidx-camera-core = { group = "androidx.camera", name = "camera-core", version.ref = "camarax" }
@@ -35,6 +37,8 @@ androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-
 androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigationCompose" }
+osmdroid-android = { group = "org.osmdroid", name = "osmdroid-android", version.ref = "osmdroid" }
+play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "playServicesLocation" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
