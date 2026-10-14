@@ -1,4 +1,3 @@
-
 package cl.triskeledu.aprendogame.ui.screens
 
 import androidx.compose.foundation.Image
@@ -7,9 +6,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -26,7 +30,11 @@ import androidx.compose.ui.unit.dp
 import cl.triskeledu.aprendogame.R
 
 @Composable
-fun RegistroJugador() {
+fun RegistroJugador(
+    // Se ejecuta al presionar "Crear cuenta". Por defecto no hace nada,
+    // así las llamadas actuales a RegistroJugador() siguen compilando.
+    onCrearCuenta: (String, String, String, Int) -> Unit = { _, _, _, _ -> },
+) {
 
     // Guarda los datos que escribe el jugador
     var nombre by remember { mutableStateOf("") }
@@ -36,8 +44,13 @@ fun RegistroJugador() {
     // Guarda el número del avatar seleccionado
     var avatarSeleccionado by remember { mutableStateOf(1) }
 
+    // El botón solo se activa cuando los campos básicos están completos
+    val formularioCompleto = nombre.isNotBlank() && alias.isNotBlank() && contrasena.length >= 4
+
     Column(
-        modifier = Modifier.padding(24.dp),
+        modifier = Modifier
+            .verticalScroll(rememberScrollState()) // Permite bajar si el teclado tapa el botón
+            .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
 
@@ -148,6 +161,18 @@ fun RegistroJugador() {
         Text(
             text = "Avatar seleccionado: $avatarSeleccionado"
         )
+
+        // Botón para crear la cuenta (desactivado hasta completar los campos)
+        Button(
+            onClick = {
+                onCrearCuenta(nombre.trim(), alias.trim(), contrasena, avatarSeleccionado)
+            },
+            enabled = formularioCompleto,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(54.dp)
+        ) {
+            Text("Crear cuenta")
+        }
     }
 }
-
