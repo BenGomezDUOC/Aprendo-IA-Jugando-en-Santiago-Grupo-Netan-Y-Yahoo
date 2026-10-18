@@ -1,7 +1,7 @@
-
 package cl.triskeledu.aprendogame.ui.screens
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -10,10 +10,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -29,142 +33,55 @@ import cl.triskeledu.aprendogame.model.Usuario
 fun RegistroJugador(
     onCrearCuenta: (Usuario, (Boolean) -> Unit) -> Unit = { _, _ -> }
 ) {
-
-    // Datos del formulario
+    // Datos esenciales para iniciar el juego
     var nombre by remember { mutableStateOf("") }
     var alias by remember { mutableStateOf("") }
-    var correo by remember { mutableStateOf("") }
-    var telefono by remember { mutableStateOf("") }
     var contrasena by remember { mutableStateOf("") }
-    var direccion by remember { mutableStateOf("") }
-
-    // Avatar elegido
     var avatarSeleccionado by remember { mutableIntStateOf(1) }
-
-    // Indica si se está registrando al jugador
     var guardando by remember { mutableStateOf(false) }
 
-    // Color principal
-    val azul = Color(0xFF1765B3)
+    val azulPrincipal = Color(0xFF2563EB)
 
-    // Validación básica del formulario
-    val formularioCompleto =
-        nombre.isNotBlank() &&
-                alias.isNotBlank() &&
-                correo.contains("@") &&
-                telefono.isNotBlank() &&
-                contrasena.length >= 8
+    val formularioValido = nombre.trim().isNotBlank() &&
+            alias.trim().isNotBlank() &&
+            contrasena.length >= 4
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(Color(0xFFF8FAFC))
+            .statusBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        Spacer(modifier = Modifier.height(12.dp))
 
-        // Título
         Text(
-            text = "Crear Nuevo Jugador",
+            text = "Crear Cuenta de Jugador",
             fontSize = 24.sp,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFF173B65)
+            color = Color(0xFF0F172A)
         )
 
         Text(
-            text = "Únete a la comunidad de jugadores",
+            text = "Configura tu perfil para comenzar a explorar",
             fontSize = 14.sp,
-            color = Color.Gray
+            color = Color(0xFF64748B)
         )
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(28.dp))
 
-        // Nombre completo
-        OutlinedTextField(
-            value = nombre,
-            onValueChange = { nombre = it },
-            label = { Text("Nombre completo") },
-            singleLine = true,
-            enabled = !guardando,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(14.dp)
-        )
-
-        // Alias
-        OutlinedTextField(
-            value = alias,
-            onValueChange = { alias = it },
-            label = { Text("Alias") },
-            singleLine = true,
-            enabled = !guardando,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(14.dp)
-        )
-
-        // Correo electrónico
-        OutlinedTextField(
-            value = correo,
-            onValueChange = { correo = it },
-            label = { Text("Correo electrónico") },
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Email
-            ),
-            singleLine = true,
-            enabled = !guardando,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(14.dp)
-        )
-
-        // Teléfono
-        OutlinedTextField(
-            value = telefono,
-            onValueChange = { telefono = it },
-            label = { Text("Teléfono") },
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Phone
-            ),
-            singleLine = true,
-            enabled = !guardando,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(14.dp)
-        )
-
-        // Contraseña
-        OutlinedTextField(
-            value = contrasena,
-            onValueChange = { contrasena = it },
-            label = { Text("Contraseña") },
-            visualTransformation = PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Password
-            ),
-            singleLine = true,
-            enabled = !guardando,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(14.dp)
-        )
-
-        // Dirección opcional
-        OutlinedTextField(
-            value = direccion,
-            onValueChange = { direccion = it },
-            label = { Text("Dirección (opcional)") },
-            singleLine = true,
-            enabled = !guardando,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(14.dp)
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Selección de avatar
+        // Selección de Avatar
         Text(
-            text = "Selecciona tu avatar",
-            fontSize = 17.sp,
+            text = "Elige tu avatar",
+            fontSize = 15.sp,
             fontWeight = FontWeight.SemiBold,
+            color = Color(0xFF334155),
             modifier = Modifier.fillMaxWidth()
         )
+
+        Spacer(modifier = Modifier.height(12.dp))
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -178,93 +95,119 @@ fun RegistroJugador(
             )
 
             avatares.forEachIndexed { indice, imagen ->
-                val numeroAvatar = indice + 1
+                val numero = indice + 1
+                val seleccionado = avatarSeleccionado == numero
 
-                Image(
-                    painter = painterResource(id = imagen),
-                    contentDescription = "Avatar $numeroAvatar",
-                    contentScale = ContentScale.Crop,
+                Box(
                     modifier = Modifier
-                        .size(82.dp)
+                        .size(80.dp)
+                        .clip(CircleShape)
                         .border(
-                            width = if (
-                                avatarSeleccionado == numeroAvatar
-                            ) 4.dp else 1.dp,
-                            color = if (
-                                avatarSeleccionado == numeroAvatar
-                            ) azul else Color.LightGray,
+                            width = if (seleccionado) 3.5.dp else 1.dp,
+                            color = if (seleccionado) azulPrincipal else Color(0xFFCBD5E1),
                             shape = CircleShape
                         )
                         .clickable(enabled = !guardando) {
-                            avatarSeleccionado = numeroAvatar
+                            avatarSeleccionado = numero
                         }
-                )
+                ) {
+                    Image(
+                        painter = painterResource(id = imagen),
+                        contentDescription = "Avatar $numero",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
             }
         }
 
-        Text(
-            text = "Avatar seleccionado: $avatarSeleccionado",
-            fontSize = 13.sp,
-            color = Color.Gray
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Campos del Formulario
+        OutlinedTextField(
+            value = nombre,
+            onValueChange = { nombre = it },
+            label = { Text("Nombre") },
+            leadingIcon = {
+                Icon(Icons.Default.Person, contentDescription = null, tint = Color(0xFF64748B))
+            },
+            singleLine = true,
+            enabled = !guardando,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp)
         )
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
-        // Crear jugador
+        OutlinedTextField(
+            value = alias,
+            onValueChange = { alias = it },
+            label = { Text("Alias / Nombre de usuario") },
+            singleLine = true,
+            enabled = !guardando,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp)
+        )
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        OutlinedTextField(
+            value = contrasena,
+            onValueChange = { contrasena = it },
+            label = { Text("Contraseña (mínimo 4 caracteres)") },
+            leadingIcon = {
+                Icon(Icons.Default.Lock, contentDescription = null, tint = Color(0xFF64748B))
+            },
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            singleLine = true,
+            enabled = !guardando,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp)
+        )
+
+        Spacer(modifier = Modifier.height(32.dp))
+
         Button(
             onClick = {
-                if (!guardando && formularioCompleto) {
-                    // Bloquea nuevos intentos de registro
+                if (!guardando && formularioValido) {
                     guardando = true
-
-                    // Crea el objeto con los datos del formulario
+                    // Genera un identificador de correo único interno para Room
+                    val correoInterno = "${alias.trim().lowercase()}@aprendogame.local"
                     val nuevoJugador = Usuario(
                         nombre = nombre.trim(),
                         alias = alias.trim(),
-                        correo = correo.trim().lowercase(),
-                        telefono = telefono.trim(),
+                        correo = correoInterno,
                         contrasena = contrasena,
-                        direccion = direccion.trim(),
                         avatar = avatarSeleccionado
                     )
-
-                    // Envía los datos y espera el resultado
-                    onCrearCuenta(nuevoJugador) { registroExitoso ->
-                        if (!registroExitoso) {
-                            // Permite volver a intentar si hubo un error
+                    onCrearCuenta(nuevoJugador) { exito ->
+                        if (!exito) {
                             guardando = false
                         }
                     }
                 }
             },
-            enabled = formularioCompleto && !guardando,
+            enabled = formularioValido && !guardando,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(54.dp),
-            shape = RoundedCornerShape(14.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = azul
-            )
+                .height(52.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = azulPrincipal)
         ) {
             if (guardando) {
-                Text(
-                    text = "Guardando jugador...",
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold
+                CircularProgressIndicator(
+                    modifier = Modifier.size(22.dp),
+                    color = Color.White,
+                    strokeWidth = 2.5.dp
                 )
             } else {
                 Text(
-                    text = "Crear Jugador",
-                    fontSize = 17.sp,
+                    text = "Comenzar a Jugar",
+                    fontSize = 16.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
         }
-
-        Text(
-            text = "Al registrarte aceptas nuestros Términos y Condiciones",
-            fontSize = 11.sp,
-            color = Color.Gray
-        )
     }
 }

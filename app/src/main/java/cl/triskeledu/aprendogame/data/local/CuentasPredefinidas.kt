@@ -21,18 +21,22 @@ object CuentasPredefinidas {
         // -----------------------------------------
 
         val correoAdmin = "admin@triskeledu.cl"
+        val hashAdmin = PasswordUtils.crearHash("Admin12345!")
+        val adminExistente = usuarioDao.buscarPorCorreo(correoAdmin)
 
-        if (usuarioDao.buscarPorCorreo(correoAdmin) == null) {
-
+        if (adminExistente == null) {
             val administrador = Usuario(
                 nombre = "Administrador",
                 alias = "Admin",
                 correo = correoAdmin,
-                contrasena = PasswordUtils.crearHash("Admin12345!"),
+                contrasena = hashAdmin,
                 rol = Rol.ADMINISTRADOR
             )
-
             usuarioDao.registrarJugador(administrador)
+        } else if (!PasswordUtils.verificarContrasena("Admin12345!", adminExistente.contrasena)) {
+            usuarioDao.insertarOActualizar(
+                adminExistente.copy(contrasena = hashAdmin)
+            )
         }
 
         // -----------------------------------------
@@ -40,18 +44,22 @@ object CuentasPredefinidas {
         // -----------------------------------------
 
         val correoGenerador = "generador@triskeledu.cl"
+        val hashGenerador = PasswordUtils.crearHash("Generador12345!")
+        val generadorExistente = usuarioDao.buscarPorCorreo(correoGenerador)
 
-        if (usuarioDao.buscarPorCorreo(correoGenerador) == null) {
-
+        if (generadorExistente == null) {
             val generador = Usuario(
                 nombre = "Generador de contenido",
                 alias = "Generador",
                 correo = correoGenerador,
-                contrasena = PasswordUtils.crearHash("Generador12345!"),
+                contrasena = hashGenerador,
                 rol = Rol.GENERADOR
             )
-
             usuarioDao.registrarJugador(generador)
+        } else if (!PasswordUtils.verificarContrasena("Generador12345!", generadorExistente.contrasena)) {
+            usuarioDao.insertarOActualizar(
+                generadorExistente.copy(contrasena = hashGenerador)
+            )
         }
     }
 }

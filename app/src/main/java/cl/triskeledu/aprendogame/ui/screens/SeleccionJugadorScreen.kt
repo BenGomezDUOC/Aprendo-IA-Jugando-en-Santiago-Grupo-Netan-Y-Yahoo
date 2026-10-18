@@ -329,11 +329,13 @@ fun SeleccionJugadorScreen(
 
                 Button(
                     onClick = {
-
+                        val pass = contrasenaIngresada
+                        mostrarDialogo = false
+                        contrasenaIngresada = ""
                         // AppNavigation verifica la contraseña.
                         onIniciarSesion(
                             jugadorSeleccionado,
-                            contrasenaIngresada
+                            pass
                         )
                     },
                     enabled = contrasenaIngresada.isNotBlank()

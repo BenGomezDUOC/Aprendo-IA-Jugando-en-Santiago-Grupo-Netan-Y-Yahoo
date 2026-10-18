@@ -1,28 +1,16 @@
 package cl.triskeledu.aprendogame.ui.screens
 
-// Herramientas para construir la pantalla
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,190 +24,224 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cl.triskeledu.aprendogame.R
 
-@Composable // Indica que esta función construye elementos visuales
+@Composable
 fun InicioScreen(
-    onComenzarClick: () -> Unit, // Acción para ir a la selección de jugador
-    onCuentaClick: () -> Unit // Acción para ir al acceso de usuarios
+    onComenzarClick: () -> Unit,
+    onCuentaClick: () -> Unit
 ) {
-
-    Box( // Permite colocar la fotografía detrás y el contenido encima
-        modifier = Modifier.fillMaxSize() // Ocupa todo el espacio disponible
-    ) {
-
-        Image( // Muestra la fotografía de Santiago
-            painter = painterResource(id = R.drawable.santiago), // Busca la foto en drawable
-            contentDescription = "Fotografía de Santiago", // Descripción de la imagen
-            modifier = Modifier.fillMaxSize(), // Ocupa toda la pantalla
-            contentScale = ContentScale.Crop // Llena la pantalla recortando lo que sobre
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Imagen de fondo de Santiago
+        Image(
+            painter = painterResource(id = R.drawable.santiago),
+            contentDescription = "Santiago Urbano",
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop
         )
 
-        Box( // Coloca un degradado sobre la fotografía
+        // Degradado oscuro superpuesto para garantizar legibilidad perfecta del texto (UX Outdoor)
+        Box(
             modifier = Modifier
-                .fillMaxSize() // Ocupa toda la pantalla
+                .fillMaxSize()
                 .background(
-                    brush = Brush.verticalGradient( // Cambia el color de arriba hacia abajo
+                    brush = Brush.verticalGradient(
                         colors = listOf(
-                            Color(0x00FFFFFF), // Arriba: transparente
-                            Color(0x44112C50), // Centro: azul semitransparente
-                            Color(0xEE102747) // Abajo: azul oscuro
+                            Color(0xCC09121F), // Azul muy oscuro superior
+                            Color(0xDD0D1D35), // Centro con opacidad alta
+                            Color(0xFA091426)  // Casi opaco abajo
                         )
                     )
                 )
         )
 
-        Column( // Organiza el contenido de arriba hacia abajo
+        Column(
             modifier = Modifier
-                .fillMaxSize() // Ocupa toda la pantalla
-                .padding(24.dp), // Deja espacio alrededor
-            horizontalAlignment = Alignment.CenterHorizontally, // Centra horizontalmente
-            verticalArrangement = Arrangement.SpaceBetween // Distribuye el contenido
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(24.dp)
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
-
-            Column( // Organiza el logo y el título
-                horizontalAlignment = Alignment.CenterHorizontally
+            // Sección Superior: Logo e Identidad
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(top = 24.dp)
             ) {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color(0x3338BDF8),
+                    modifier = Modifier.size(68.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.LocationOn,
+                            contentDescription = "Logo",
+                            tint = Color(0xFF38BDF8),
+                            modifier = Modifier.size(36.dp)
+                        )
+                    }
+                }
 
-                Spacer(modifier = Modifier.height(32.dp)) // Espacio superior
+                Spacer(modifier = Modifier.height(18.dp))
 
                 Text(
-                    text = "🎓", // Logo provisional hasta agregar el definitivo
-                    fontSize = 55.sp // Tamaño del símbolo
+                    text = "Aprendo IA Jugando",
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    textAlign = TextAlign.Center
                 )
 
-                Spacer(modifier = Modifier.height(12.dp)) // Espacio entre logo y título
+                Text(
+                    text = "Santiago Urbano",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color(0xFF38BDF8),
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
 
                 Text(
-                    text = "Aprendo IA\nJugando en Santiago", // Título en dos líneas
-                    fontSize = 30.sp, // Tamaño de la letra
-                    fontWeight = FontWeight.Bold, // Letra en negrita
-                    color = Color(0xFF102747), // Azul oscuro
-                    textAlign = TextAlign.Center, // Centra el texto
-                    lineHeight = 36.sp // Separación entre líneas
+                    text = "Recorre hitos culturales, escanea códigos QR y aprende sobre Inteligencia Artificial.",
+                    fontSize = 14.sp,
+                    color = Color(0xFFCBD5E1),
+                    textAlign = TextAlign.Center,
+                    lineHeight = 20.sp,
+                    modifier = Modifier.padding(horizontal = 16.dp)
                 )
             }
 
-            Column( // Organiza la descripción y los beneficios
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
+            Spacer(modifier = Modifier.height(24.dp))
 
-                Text(
-                    text = "Descubre, aprende y gana puntos escaneando códigos QR en la ciudad.",
-                    fontSize = 17.sp, // Tamaño del texto
-                    color = Color.White, // Texto blanco
-                    textAlign = TextAlign.Center, // Texto centrado
-                    lineHeight = 24.sp // Separación entre líneas
-                )
-
-                Spacer(modifier = Modifier.height(24.dp)) // Espacio antes de los beneficios
-
-                Row( // Primer beneficio: icono y texto al lado
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.PlayArrow, // Icono de reproducción
-                        contentDescription = null, // Icono decorativo
-                        tint = Color.White, // Icono blanco
-                        modifier = Modifier.size(28.dp)
-                    )
-
-                    Text(
-                        text = "Aprende con videos cortos",
-                        color = Color.White,
-                        fontSize = 16.sp,
-                        modifier = Modifier.padding(start = 12.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Row( // Segundo beneficio
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.LocationOn, // Icono de ubicación
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(28.dp)
-                    )
-
-                    Text(
-                        text = "Recorre lugares icónicos",
-                        color = Color.White,
-                        fontSize = 16.sp,
-                        modifier = Modifier.padding(start = 12.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Row( // Tercer beneficio
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.CheckCircle, // Icono de desafío
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(28.dp)
-                    )
-
-                    Text(
-                        text = "Gana puntos y desbloquea desafíos",
-                        color = Color.White,
-                        fontSize = 16.sp,
-                        modifier = Modifier.padding(start = 12.dp)
-                    )
-                }
-            }
-
-            Column( // Organiza los dos botones inferiores
+            // Tarjetas de Beneficios / Características
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                ItemBeneficio(
+                    icono = Icons.Default.LocationOn,
+                    colorIcono = Color(0xFF38BDF8),
+                    titulo = "Recorre puntos turísticos",
+                    subtitulo = "Usa el mapa interactivo y visita lugares icónicos"
+                )
 
-                Button( // Botón principal: Comenzar
-                    onClick = { onComenzarClick() }, // Ejecuta la navegación
+                ItemBeneficio(
+                    icono = Icons.Default.PlayArrow,
+                    colorIcono = Color(0xFF818CF8),
+                    titulo = "Cápsulas de video IA",
+                    subtitulo = "Aprende conceptos clave con explicaciones breves"
+                )
+
+                ItemBeneficio(
+                    icono = Icons.Default.CheckCircle,
+                    colorIcono = Color(0xFF4ADE80),
+                    titulo = "Valida con Selfie y gana puntos",
+                    subtitulo = "Acumula puntos y desbloquea el ranking"
+                )
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Botones de Acción
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Button(
+                    onClick = onComenzarClick,
                     modifier = Modifier
-                        .fillMaxWidth() // Ocupa el ancho disponible
-                        .height(54.dp), // Altura del botón
-                    shape = RoundedCornerShape(14.dp), // Esquinas redondeadas
+                        .fillMaxWidth()
+                        .height(54.dp),
+                    shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF246BEE) // Fondo azul
-                    )
+                        containerColor = Color(0xFF2563EB) // Azul Duoc/Triskeledu
+                    ),
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp)
                 ) {
                     Text(
-                        text = "Comenzar",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
+                        text = "Comenzar Aventura",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
                     )
                 }
 
-                Spacer(modifier = Modifier.height(12.dp)) // Separación entre botones
-
-                OutlinedButton( // Botón secundario
-                    onClick = { onCuentaClick() }, // Ejecuta la acción de acceso
+                OutlinedButton(
+                    onClick = onCuentaClick,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(54.dp),
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = Color.White // Fondo blanco
+                        containerColor = Color(0x22FFFFFF)
+                    ),
+                    border = ButtonDefaults.outlinedButtonBorder.copy(
+                        brush = Brush.horizontalGradient(listOf(Color(0xFF38BDF8), Color(0xFF818CF8)))
                     )
                 ) {
                     Text(
                         text = "Ya tengo una cuenta",
                         fontSize = 16.sp,
-                        color = Color(0xFF102747) // Texto azul oscuro
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White
                     )
                 }
+            }
+        }
+    }
+}
 
-                Spacer(modifier = Modifier.height(16.dp)) // Espacio inferior
+@Composable
+private fun ItemBeneficio(
+    icono: androidx.compose.ui.graphics.vector.ImageVector,
+    colorIcono: Color,
+    titulo: String,
+    subtitulo: String
+) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = Color(0x401E293B),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = colorIcono.copy(alpha = 0.2f),
+                modifier = Modifier.size(44.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = icono,
+                        contentDescription = null,
+                        tint = colorIcono,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
             }
 
-        } // Cierra Column principal
+            Spacer(modifier = Modifier.width(14.dp))
 
-    } // Cierra Box
-
-} // Cierra InicioScreen
+            Column {
+                Text(
+                    text = titulo,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+                Text(
+                    text = subtitulo,
+                    fontSize = 12.sp,
+                    color = Color(0xFF94A3B8),
+                    lineHeight = 16.sp
+                )
+            }
+        }
+    }
+}

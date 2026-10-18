@@ -1,24 +1,20 @@
 package cl.triskeledu.aprendogame.ui.screens
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.drawable.BitmapDrawable
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
@@ -26,28 +22,15 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.QrCodeScanner
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -105,26 +88,52 @@ fun MapaScreen(
         }
     }
 
-    // Configuración base de OSMDroid (necesaria para caching y User-Agent)
     LaunchedEffect(Unit) {
         Configuration.getInstance().userAgentValue = context.packageName
     }
 
     var mapViewRef by remember { mutableStateOf<MapView?>(null) }
 
+    // Generador de iconos nativos personalizados (Pin circular estilizado sin emojis)
+    fun crearPinDrawable(completado: Boolean): BitmapDrawable {
+        val diametro = 84
+        val bitmap = Bitmap.createBitmap(diametro, diametro, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+
+        val paintSombra = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.argb(80, 0, 0, 0)
+        }
+        val paintBorde = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.WHITE
+        }
+        val paintFondo = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            // Verde si está completado, azul Triskeledu si está pendiente
+            color = if (completado) android.graphics.Color.parseColor("#16A34A") else android.graphics.Color.parseColor("#2563EB")
+        }
+        val paintCentro = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.WHITE
+        }
+
+        val centro = diametro / 2f
+        canvas.drawCircle(centro, centro + 2f, 34f, paintSombra)
+        canvas.drawCircle(centro, centro, 32f, paintBorde)
+        canvas.drawCircle(centro, centro, 28f, paintFondo)
+        canvas.drawCircle(centro, centro, 10f, paintCentro)
+
+        return BitmapDrawable(context.resources, bitmap)
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
-        // Vista del Mapa OpenStreetMap
+        // Mapa centrado a pantalla completa
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { ctx ->
                 MapView(ctx).apply {
                     setTileSource(TileSourceFactory.MAPNIK)
                     setMultiTouchControls(true)
-                    controller.setZoom(14.5)
-                    // Coordenada central: Santiago Centro
-                    controller.setCenter(GeoPoint(-33.4429, -70.6539))
+                    controller.setZoom(15.2)
+                    controller.setCenter(GeoPoint(-33.4372, -70.6506))
 
-                    // Capa de ubicación en el mapa
                     val locationOverlay = MyLocationNewOverlay(GpsMyLocationProvider(ctx), this)
                     locationOverlay.enableMyLocation()
                     overlays.add(locationOverlay)
@@ -133,18 +142,17 @@ fun MapaScreen(
                 }
             },
             update = { mapView ->
-                // Limpiar marcadores previos excepto la capa de ubicación (índice 0)
                 while (mapView.overlays.size > 1) {
                     mapView.overlays.removeAt(mapView.overlays.size - 1)
                 }
 
-                // Agregar marcadores para cada Punto de Interés
                 puntos.forEach { punto ->
                     val marker = Marker(mapView).apply {
                         position = GeoPoint(punto.latitud, punto.longitud)
                         title = punto.nombre
                         snippet = punto.descripcion
-                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                        icon = crearPinDrawable(punto.completado)
+                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
                         setOnMarkerClickListener { _, _ ->
                             viewModel.seleccionarPunto(punto)
                             true
@@ -156,24 +164,21 @@ fun MapaScreen(
             }
         )
 
-        // Limpieza del ciclo de vida del MapView
         DisposableEffect(Unit) {
             onDispose {
                 mapViewRef?.onDetach()
             }
         }
 
-        // Header superior tipo "Outdoor UX" con alto contraste
+        // Barra superior de estado (Limpia y sobria)
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(horizontal = 16.dp, vertical = 12.dp)
                 .align(Alignment.TopCenter),
-            colors = CardDefaults.cardColors(
-                containerColor = Color(0xFF1E293B) // Azul oscuro alto contraste
-            ),
-            shape = RoundedCornerShape(16.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
+            shape = RoundedCornerShape(14.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
         ) {
             Row(
                 modifier = Modifier
@@ -191,40 +196,39 @@ fun MapaScreen(
                     )
                     val completados = puntos.count { it.completado }
                     Text(
-                        text = "Progreso: $completados / ${puntos.size} descubiertos",
+                        text = "$completados de ${puntos.size} puntos completados",
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF94A3B8)
+                        color = Color(0xFF38BDF8)
                     )
                 }
                 Icon(
                     imageVector = Icons.Default.LocationOn,
                     contentDescription = null,
                     tint = Color(0xFF38BDF8),
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(24.dp)
                 )
             }
         }
 
-        // Botón flotante para re-centrar en el usuario
+        // Botón flotante para recentrar en el usuario
         FloatingActionButton(
             onClick = {
                 ubicacionActual?.let { loc ->
                     mapViewRef?.controller?.animateTo(GeoPoint(loc.latitude, loc.longitude))
                 } ?: run {
-                    // Si aún no hay GPS, centrar en Plaza de Armas
                     mapViewRef?.controller?.animateTo(GeoPoint(-33.4372, -70.6506))
                 }
             },
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(end = 16.dp, bottom = if (puntoSeleccionado != null) 230.dp else 24.dp),
-            containerColor = Color(0xFF0284C7),
+            containerColor = Color(0xFF2563EB),
             contentColor = Color.White
         ) {
             Icon(Icons.Default.MyLocation, contentDescription = "Mi Ubicación")
         }
 
-        // Tarjeta emergente inferior al tocar un marcador (BottomSheet / Card)
+        // Tarjeta emergente inferior al tocar un marcador
         AnimatedVisibility(
             visible = puntoSeleccionado != null,
             modifier = Modifier
@@ -240,14 +244,10 @@ fun MapaScreen(
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color(0xFF0F172A) // Alto contraste Outdoor
-                    ),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
                     elevation = CardDefaults.cardElevation(defaultElevation = 12.dp)
                 ) {
-                    Column(
-                        modifier = Modifier.padding(20.dp)
-                    ) {
+                    Column(modifier = Modifier.padding(18.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -256,7 +256,7 @@ fun MapaScreen(
                             Text(
                                 text = punto.nombre,
                                 style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.ExtraBold,
+                                fontWeight = FontWeight.Bold,
                                 color = Color.White
                             )
                             IconButton(onClick = { viewModel.seleccionarPunto(null) }) {
@@ -274,24 +274,22 @@ fun MapaScreen(
 
                         Spacer(modifier = Modifier.height(10.dp))
 
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
                                 imageVector = if (punto.completado) Icons.Default.CheckCircle else Icons.Default.LocationOn,
                                 contentDescription = null,
                                 tint = if (punto.completado) Color(0xFF4ADE80) else Color(0xFFFBBF24),
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = if (punto.completado) "¡Lugar ya completado!" else "Pendiente de visita",
+                                text = if (punto.completado) "Completado" else "Pendiente de visita",
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.SemiBold,
                                 color = if (punto.completado) Color(0xFF4ADE80) else Color(0xFFFBBF24)
                             )
                             if (distancia != null) {
-                                Spacer(modifier = Modifier.width(12.dp))
+                                Spacer(modifier = Modifier.width(10.dp))
                                 Text(
                                     text = "• A aprox. ${distancia.toInt()} m",
                                     style = MaterialTheme.typography.bodySmall,
@@ -309,9 +307,7 @@ fun MapaScreen(
                             Button(
                                 onClick = { onEscanearQrClick(punto) },
                                 modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFF2563EB)
-                                ),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
                                 shape = RoundedCornerShape(12.dp)
                             ) {
                                 Icon(Icons.Default.QrCodeScanner, contentDescription = null)
@@ -324,9 +320,7 @@ fun MapaScreen(
                                     onClick = {
                                         viewModel.marcarCompletado(punto.id)
                                     },
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = Color(0xFF16A34A)
-                                    ),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
                                     shape = RoundedCornerShape(12.dp)
                                 ) {
                                     Text("Validar")
