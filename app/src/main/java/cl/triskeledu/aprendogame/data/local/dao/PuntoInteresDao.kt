@@ -22,6 +22,10 @@ interface PuntoInteresDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertarPuntos(puntos: List<PuntoInteres>)
 
+    // Inserta lugares iniciales solo si todavía no existen.
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertarPuntosIniciales(puntos: List<PuntoInteres>)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertarPunto(punto: PuntoInteres): Long
 

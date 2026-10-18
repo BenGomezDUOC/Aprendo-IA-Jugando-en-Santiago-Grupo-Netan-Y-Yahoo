@@ -1,0 +1,129 @@
+[1mdiff --cc app/src/main/java/cl/triskeledu/aprendogame/viewmodel/GameVIewModel.kt[m
+[1mindex 84bc082,5b42730..0000000[m
+[1m--- a/app/src/main/java/cl/triskeledu/aprendogame/viewmodel/GameVIewModel.kt[m
+[1m+++ b/app/src/main/java/cl/triskeledu/aprendogame/viewmodel/GameVIewModel.kt[m
+[36m@@@ -1,76 -1,47 +1,122 @@@[m
+  package cl.triskeledu.aprendogame.viewmodel[m
+  [m
+[32m++<<<<<<< HEAD[m
+[32m +import android.content.Context[m
+[32m +import android.location.Location[m
+[32m +import androidx.lifecycle.ViewModel[m
+[32m +import androidx.lifecycle.viewModelScope[m
+[32m +import cl.triskeledu.aprendogame.location.LocationService[m
+[32m++=======[m
+[32m+ import android.app.Application[m
+[32m+ import androidx.lifecycle.AndroidViewModel[m
+[32m+ import androidx.lifecycle.viewModelScope[m
+[32m+ import cl.triskeledu.aprendogame.data.local.AppDatabase[m
+[32m+ import cl.triskeledu.aprendogame.data.repository.GameRepository[m
+[32m+ import cl.triskeledu.aprendogame.data.repository.GameRepositoryImpl[m
+[32m++>>>>>>> 3cd8ccee4d54cb997f7c08c0c5a8a0cb5e8b7e36[m
+  import cl.triskeledu.aprendogame.model.PuntoInteres[m
+[31m- import kotlinx.coroutines.flow.MutableStateFlow[m
+[32m+ import cl.triskeledu.aprendogame.model.Usuario[m
+[32m+ import kotlinx.coroutines.flow.SharingStarted[m
+  import kotlinx.coroutines.flow.StateFlow[m
+[32m++<<<<<<< HEAD[m
+[32m +import kotlinx.coroutines.flow.asStateFlow[m
+[32m +import kotlinx.coroutines.flow.catch[m
+[32m +import kotlinx.coroutines.flow.update[m
+[32m++=======[m
+[32m+ import kotlinx.coroutines.flow.stateIn[m
+[32m++>>>>>>> 3cd8ccee4d54cb997f7c08c0c5a8a0cb5e8b7e36[m
+  import kotlinx.coroutines.launch[m
+  [m
+[31m- class GameViewModel : ViewModel() {[m
+[32m+ /**[m
+[32m+  * ViewModel principal del juego conectado al Repositorio de persistencia Room.[m
+[32m+  * Provee el estado reactivo consumido por la interfaz de usuario en Compose.[m
+[32m+  */[m
+[32m+ class GameViewModel([m
+[32m+     application: Application,[m
+[32m+     private val repository: GameRepository = GameRepositoryImpl(AppDatabase.getInstance(application))[m
+[32m+ ) : AndroidViewModel(application) {[m
+  [m
+[32m++<<<<<<< HEAD[m
+[32m +    // Lista de puntos turísticos (en memoria por ahora, luego Room)[m
+[32m +    private val _puntos = MutableStateFlow(puntosDePrueba())[m
+[32m +    val puntos: StateFlow<List<PuntoInteres>> = _puntos.asStateFlow()[m
+[32m +[m
+[32m +    // Ubicación GPS actual del usuario[m
+[32m +    private val _ubicacionActual = MutableStateFlow<Location?>(null)[m
+[32m +    val ubicacionActual: StateFlow<Location?> = _ubicacionActual.asStateFlow()[m
+[32m +[m
+[32m +    // Punto turístico seleccionado actualmente para ver detalles en el mapa[m
+[32m +    private val _puntoSeleccionado = MutableStateFlow<PuntoInteres?>(null)[m
+[32m +    val puntoSeleccionado: StateFlow<PuntoInteres?> = _puntoSeleccionado.asStateFlow()[m
+[32m +[m
+[32m +    private var locationService: LocationService? = null[m
+[32m +[m
+[32m +    fun iniciarRastreoGPS(context: Context) {[m
+[32m +        if (locationService == null) {[m
+[32m +            locationService = LocationService(context.applicationContext)[m
+[32m +        }[m
+[32m +        viewModelScope.launch {[m
+[32m +            locationService?.obtenerUbicacionFlow()[m
+[32m +                ?.catch { e -> e.printStackTrace() }[m
+[32m +                ?.collect { location ->[m
+[32m +                    _ubicacionActual.value = location[m
+[32m +                }[m
+[32m +        }[m
+[32m +    }[m
+[32m +[m
+[32m +    fun seleccionarPunto(punto: PuntoInteres?) {[m
+[32m +        _puntoSeleccionado.value = punto[m
+[32m +    }[m
+[32m +[m
+[32m +    // Calcula la distancia en metros entre el usuario y un punto de interés[m
+[32m +    fun calcularDistanciaMetros(punto: PuntoInteres): Float? {[m
+[32m +        val ubicacion = _ubicacionActual.value ?: return null[m
+[32m +        val resultados = FloatArray(1)[m
+[32m +        Location.distanceBetween([m
+[32m +            ubicacion.latitude,[m
+[32m +            ubicacion.longitude,[m
+[32m +            punto.latitud,[m
+[32m +            punto.longitud,[m
+[32m +            resultados[m
+[32m +        )[m
+[32m +        return resultados[0][m
+[32m +    }[m
+[32m +[m
+[32m +    // Marca un punto como completado usando map para crear una lista nueva (inmutable).[m
+[32m +    fun marcarCompletado(id: Int) = _puntos.update { lista ->[m
+[32m +        lista.map { if (it.id == id) it.copy(completado = true) else it }[m
+[32m +    }[m
+[32m +[m
+[32m +    // Datos ficticios de prueba en Santiago.[m
+[32m +    private fun puntosDePrueba() = listOf([m
+[32m +        PuntoInteres(1, "Plaza de Armas", "Centro histórico y cívico de Santiago", -33.4372, -70.6506, 520.0),[m
+[32m +        PuntoInteres(2, "Cerro Santa Lucía", "Mirador histórico y parque urbano", -33.4403, -70.6436, 580.0),[m
+[32m +        PuntoInteres(3, "Cerro San Cristóbal", "El mayor parque metropolitano de la capital", -33.4256, -70.6347, 800.0),[m
+[32m +        PuntoInteres(4, "Palacio de La Moneda", "Sede de gobierno y patrimonio cultural", -33.4429, -70.6539, 521.0),[m
+[32m +        PuntoInteres(5, "Parque Forestal", "Área verde emblemática junto al río Mapocho", -33.4361, -70.6428, 535.0),[m
+[32m +    )[m
+[32m++=======[m
+[32m+     // Lista reactiva de puntos turísticos proveniente de la base de datos SQLite/Room[m
+[32m+     val puntos: StateFlow<List<PuntoInteres>> = repository.getPuntos()[m
+[32m+         .stateIn([m
+[32m+             scope = viewModelScope,[m
+[32m+             started = SharingStarted.WhileSubscribed(5000),[m
+[32m+             initialValue = emptyList()[m
+[32m+         )[m
+[32m+ [m
+[32m+     // Perfil y puntajes del usuario observados en tiempo real[m
+[32m+     val usuario: StateFlow<Usuario?> = repository.getUsuario()[m
+[32m+         .stateIn([m
+[32m+             scope = viewModelScope,[m
+[32m+             started = SharingStarted.WhileSubscribed(5000),[m
+[32m+             initialValue = null[m
+[32m+         )[m
+[32m+ [m
+[32m+     // Marca un punto como completado y persiste el cambio en Room[m
+[32m+     fun marcarCompletado(id: Int) {[m
+[32m+         viewModelScope.launch {[m
+[32m+             repository.marcarPuntoCompletado(id, puntosRecompensa = 100)[m
+[32m+         }[m
+[32m+     }[m
+[32m++>>>>>>> 3cd8ccee4d54cb997f7c08c0c5a8a0cb5e8b7e36[m
+  }[m

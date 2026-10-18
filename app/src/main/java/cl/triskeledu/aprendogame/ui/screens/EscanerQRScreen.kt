@@ -1,591 +1,553 @@
+
 package cl.triskeledu.aprendogame.ui.screens
 
-import android.Manifest
+import android.content.Context
+import android.net.Uri
+import android.util.Log
+
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Column
-import androidx.compose.material3.Button
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FlashlightOn
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material3.*
+
+import androidx.compose.runtime.*
+
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.dp
+
+import cl.triskeledu.aprendogame.data.local.AppDatabase
+import cl.triskeledu.aprendogame.data.repository.GameRepositoryImpl
+import cl.triskeledu.aprendogame.model.Capsula
+import cl.triskeledu.aprendogame.model.DescubrimientoQr
+import cl.triskeledu.aprendogame.viewmodel.GameViewModel
+
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
+import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.barcode.BarcodeScannerOptions
+import com.google.mlkit.vision.common.InputImage
+
+import kotlinx.coroutines.launch
+import org.json.JSONObject
 
 @Composable
-fun EscanerQRScreen() {
+fun EscanerQRScreen(
+    gameViewModel: GameViewModel,
+    onResultadoQr: (Capsula, Int) -> Unit
+) {
+    val context = LocalContext.current
+    val abrirEnlace = LocalUriHandler.current
+    val scope = rememberCoroutineScope()
 
-    var permisoConcedido by remember {
+    // Reutilizamos Room y el repositorio del proyecto.
+    val repository = remember(context) {
+        GameRepositoryImpl(
+            AppDatabase.getInstance(context.applicationContext)
+        )
+    }
+
+    var mensaje by remember {
+        mutableStateOf(
+            "Se detectará automáticamente el código QR"
+        )
+    }
+
+    var escaneando by remember {
         mutableStateOf(false)
     }
 
-    val solicitarPermiso = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { concedido ->
-        permisoConcedido = concedido
+    var capsulaEncontrada by remember {
+        mutableStateOf<Capsula?>(null)
     }
 
-    Column {
-        Text("Escáner de código QR")
+    var puntosGanados by remember {
+        mutableIntStateOf(0)
+    }
 
-        Button(
-            onClick = {
-                solicitarPermiso.launch(Manifest.permission.CAMERA)
-            }
-        ) {
-            Text("Solicitar permiso de cámara")
-        }
+    // Procesa el contenido que entrega el escáner.
+    val procesarQr: (String) -> Unit = { textoLeido ->
 
-        if (permisoConcedido) {
-            Text("Permiso concedido")
+        val codigoQr = extraerCodigoQr(textoLeido)
+        val usuarioId = gameViewModel.usuarioActivoId.value
+
+        if (usuarioId == null) {
+            mensaje = "Debes iniciar sesión para registrar QR."
+            escaneando = false
+
+        } else if (codigoQr.isBlank()) {
+            mensaje = "No se pudo leer el contenido del QR."
+            escaneando = false
+
         } else {
-            Text("Permiso no concedido")
+            scope.launch {
+                try {
+                    // 1. Buscar la cápsula en Room.
+                    val capsula = repository.validarQr(codigoQr)
+
+                    if (capsula == null) {
+                        capsulaEncontrada = null
+                        puntosGanados = 0
+                        mensaje = "Este QR no pertenece a Triskeledu."
+
+                    } else {
+                        // 2. Registrar el descubrimiento.
+                        val resultado =
+                            repository.registrarDescubrimientoQr(
+                                DescubrimientoQr(
+                                    usuarioId = usuarioId,
+                                    capsulaId = capsula.id,
+                                    fechaTimestamp =
+                                        System.currentTimeMillis()
+                                )
+                            )
+
+                        // 3. Mostrar la cápsula.
+                        capsulaEncontrada = capsula
+
+                        if (resultado == -1L) {
+                            puntosGanados = 0
+                            mensaje =
+                                "Ya habías descubierto este QR. No se suman puntos nuevamente."
+                        } else {
+                            puntosGanados = 10
+                            mensaje =
+                                "¡QR descubierto! Ganaste 10 puntos."
+                        }
+
+                        // Abre la pantalla 8 con la cápsula y los puntos reales.
+                        onResultadoQr(capsula, puntosGanados)
+
+
+                    }
+
+                } catch (error: Exception) {
+                    Log.e(
+                        "TriskeleduQR",
+                        "Error al registrar QR",
+                        error
+                    )
+
+                    mensaje =
+                        "No se pudo registrar el QR: ${error.message}"
+
+                } finally {
+                    escaneando = false
+                }
+            }
+        }
+    }
+
+    // Google Code Scanner: el escáner que funcionaba.
+    val iniciarEscaneo: () -> Unit = {
+        if (!escaneando) {
+            val usuarioId = gameViewModel.usuarioActivoId.value
+
+            if (usuarioId == null) {
+                mensaje = "Debes iniciar sesión para escanear."
+
+            } else {
+                escaneando = true
+                capsulaEncontrada = null
+                puntosGanados = 0
+                mensaje = "Apunta la cámara al código QR."
+
+                val opciones = GmsBarcodeScannerOptions.Builder()
+                    .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+                    .build()
+
+                GmsBarcodeScanning
+                    .getClient(context, opciones)
+                    .startScan()
+                    .addOnSuccessListener { codigo ->
+                        procesarQr(codigo.rawValue.orEmpty())
+                    }
+                    .addOnCanceledListener {
+                        mensaje = "Escaneo cancelado."
+                        escaneando = false
+                    }
+                    .addOnFailureListener { error ->
+                        mensaje =
+                            "No se pudo escanear: ${error.message}"
+                        escaneando = false
+                    }
+            }
+        }
+    }
+
+    // Galería: permite analizar un QR desde una imagen.
+    val seleccionarImagen =
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.GetContent()
+        ) { uri: Uri? ->
+
+            if (uri == null) {
+                mensaje = "Selección cancelada."
+                escaneando = false
+
+            } else {
+                escaneando = true
+                mensaje = "Analizando imagen..."
+
+                val opciones = BarcodeScannerOptions.Builder()
+                    .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+                    .build()
+
+                val lector = BarcodeScanning.getClient(opciones)
+
+                try {
+                    val imagen =
+                        InputImage.fromFilePath(context, uri)
+
+                    lector.process(imagen)
+                        .addOnSuccessListener { codigos ->
+                            val texto = codigos
+                                .firstOrNull {
+                                    !it.rawValue.isNullOrBlank()
+                                }
+                                ?.rawValue
+
+                            if (texto.isNullOrBlank()) {
+                                mensaje =
+                                    "La imagen no contiene un QR reconocible."
+                                escaneando = false
+                            } else {
+                                procesarQr(texto)
+                            }
+                        }
+                        .addOnFailureListener { error ->
+                            mensaje =
+                                "Error al analizar imagen: ${error.message}"
+                            escaneando = false
+                        }
+                        .addOnCompleteListener {
+                            lector.close()
+                        }
+
+                } catch (error: Exception) {
+                    lector.close()
+                    mensaje =
+                        "No se pudo abrir la imagen: ${error.message}"
+                    escaneando = false
+                }
+            }
+        }
+
+    // Interfaz de la pantalla 7.
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+
+        Text(
+            text = "Escanea el código QR",
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold
+        )
+
+        Text(
+            text = "Apunta la cámara al código QR del punto",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        // Recuadro con el estilo de la referencia.
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(350.dp)
+                .clickable(
+                    enabled = !escaneando,
+                    onClick = iniciarEscaneo
+                ),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = Color(0xFF172D44)
+            )
+        ) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement =
+                        Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.QrCodeScanner,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(65.dp)
+                    )
+
+                    Text(
+                        text = if (escaneando) {
+                            "Procesando QR..."
+                        } else {
+                            "TOCA AQUÍ PARA ESCANEAR"
+                        },
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Text(
+                        text = "Se abrirá la cámara para leer el código",
+                        color = Color.White.copy(alpha = 0.8f),
+                        style = MaterialTheme.typography.bodySmall,
+                        textAlign = TextAlign.Center
+                    )
+                }
+
+                MarcoEscaneoQr(
+                    modifier = Modifier.size(230.dp)
+                )
+            }
+        }
+
+        // Controles visuales y galería.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+
+            // Google Code Scanner controla la linterna
+            // desde su propia interfaz de cámara.
+            OutlinedButton(
+                onClick = iniciarEscaneo,
+                enabled = !escaneando,
+                modifier = Modifier.weight(1f)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.FlashlightOn,
+                    contentDescription = null
+                )
+
+                Spacer(Modifier.width(6.dp))
+                Text("Cámara")
+            }
+
+            OutlinedButton(
+                onClick = {
+                    seleccionarImagen.launch("image/*")
+                },
+                enabled = !escaneando,
+                modifier = Modifier.weight(1f)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PhotoLibrary,
+                    contentDescription = null
+                )
+
+                Spacer(Modifier.width(6.dp))
+                Text("Galería")
+            }
+        }
+
+        // Mensaje de estado.
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor =
+                    MaterialTheme.colorScheme.surfaceVariant
+            )
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement =
+                    Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = mensaje,
+                    fontWeight = FontWeight.Medium
+                )
+
+                if (escaneando) {
+                    LinearProgressIndicator(
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        }
+
+        // Resultado del descubrimiento.
+        capsulaEncontrada?.let { capsula ->
+
+            Card(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement =
+                        Arrangement.spacedBy(12.dp)
+                ) {
+
+                    Text(
+                        text = "¡Descubrimiento encontrado!",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Text(
+                        text = if (puntosGanados > 0) {
+                            "+10 puntos"
+                        } else {
+                            "QR descubierto anteriormente"
+                        },
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Text(
+                        text = capsula.titulo,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Text(capsula.descripcion)
+
+                    Text(
+                        text = "Video educativo",
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    val url = capsula.urlVideo
+
+                    if (
+                        url.startsWith("https://") ||
+                        url.startsWith("http://")
+                    ) {
+                        Text(
+                            text = url,
+                            color =
+                                MaterialTheme.colorScheme.primary,
+                            textDecoration =
+                                TextDecoration.Underline,
+                            modifier = Modifier.clickable {
+                                abrirEnlace.openUri(url)
+                            }
+                        )
+                    } else {
+                        Text(
+                            "Esta cápsula no tiene un enlace de video válido."
+                        )
+                    }
+                }
+            }
         }
     }
 }
 
+// Dibuja las cuatro esquinas blancas del escáner.
+@Composable
+private fun MarcoEscaneoQr(
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
 
-/*
- * GUARDAR EL ESTADO DEL PERMISO DE CÁMARA
- *
- * SINTAXIS GENERAL:
- *
- * var nombreVariable by remember { mutableStateOf(valorInicial) }
- *
- * NUESTRO CÓDIGO:
- *
- * var permisoConcedido by remember { mutableStateOf(false) }
- *
- * 1. mutableStateOf(false): OBLIGA A LA PANTALLA A CAMBIAR LO QUE MUESTRA
- *    - Sin esto: Cambias la variable a true, pero en el teléfono el botón se queda congelado.
- *    - Con esto: Al pasar a true, activa una señal para que la pantalla cambie el botón
- *      por la cámara o el juego, si así lo programamos.
- *    - "Redibujar": Quitar un elemento visual de la pantalla (botón)
- *      y poner otro (cámara/juego).
- *
- * 2. remember: EL CANDADO DE MEMORIA
- *    - Para actualizar lo que vemos, Compose puede volver a leer el código.
- *    - Sin esto: Al volver a crear el estado, lee 'false' otra vez,
- *      olvida el cambio y puede volver a mostrar el botón.
- *    - Con esto: Le pone un candado al 'true' para mantener el cambio
- *      mientras Compose vuelve a leer esa parte del código.
- *
- * 3. var: LA CAJITA QUE PUEDE CAMBIAR
- *    - Imagina una cajita donde guardamos una respuesta.
- *    - Primero guardamos false.
- *    - Cuando el usuario acepta el permiso, podemos guardar true.
- *    - Usamos var porque necesitamos cambiar ese valor.
- *
- * 4. permisoConcedido: EL NOMBRE DE LA CAJITA
- *    - Es el nombre que elegimos para guardar la respuesta.
- *    - Podemos poner otro nombre, pero tenemos que utilizarlo
- *      igual en el resto del código.
- *
- * 5. by: NOS AHORRA ESCRIBIR .value
- *    - Con by: permisoConcedido = true
- *    - Sin by, declarando el estado directamente:
- *      permisoConcedido.value = true
- *    - Hace que cambiar el valor sea más sencillo.
- *
- * 6. { }: LAS LLAVES
- *    - En remember { mutableStateOf(false) }, guardan
- *      la instrucción que crea nuestra cajita.
- *
- * 7. ( ): LOS PARÉNTESIS
- *    - En mutableStateOf(false), indican qué valor
- *      queremos guardar al principio.
- *
- * 8. false: COMENZAR EN FALSO
- *    - false significa falso.
- *    - true significa verdadero.
- *    - Boolean es el tipo de dato que admite estos dos valores.
- *    - Aquí false es solamente el valor inicial;
- *      todavía no hemos preguntado a Android si ya dio permiso.
- *
- * 9. =: GUARDAR UN VALOR
- *    - permisoConcedido = true significa guardar true.
- *    - = sirve para asignar un valor.
- *    - == sirve para comparar si dos valores son iguales.
- *
- * Hay dos trabajos diferentes:
-- Guardar la respuesta: necesitamos recordar que el usuario aceptó (true).
-- Cambiar la pantalla: necesitamos que el teléfono deje de mostrar «Permiso no concedido» y muestre «Permiso concedido».
-Por eso utilizamos las tres cosas juntas:
-var permisoConcedido by remember {
-    mutableStateOf(false)
+        val largo = 38.dp.toPx()
+        val grosor = 5.dp.toPx()
+
+        val ancho = size.width
+        val alto = size.height
+
+        val color = Color.White
+
+        // Esquina superior izquierda.
+        drawLine(
+            color,
+            Offset(0f, largo),
+            Offset(0f, 0f),
+            grosor
+        )
+
+        drawLine(
+            color,
+            Offset(0f, 0f),
+            Offset(largo, 0f),
+            grosor
+        )
+
+        // Esquina superior derecha.
+        drawLine(
+            color,
+            Offset(ancho - largo, 0f),
+            Offset(ancho, 0f),
+            grosor
+        )
+
+        drawLine(
+            color,
+            Offset(ancho, 0f),
+            Offset(ancho, largo),
+            grosor
+        )
+
+        // Esquina inferior izquierda.
+        drawLine(
+            color,
+            Offset(0f, alto - largo),
+            Offset(0f, alto),
+            grosor
+        )
+
+        drawLine(
+            color,
+            Offset(0f, alto),
+            Offset(largo, alto),
+            grosor
+        )
+
+        // Esquina inferior derecha.
+        drawLine(
+            color,
+            Offset(ancho - largo, alto),
+            Offset(ancho, alto),
+            grosor
+        )
+
+        drawLine(
+            color,
+            Offset(ancho, alto - largo),
+            Offset(ancho, alto),
+            grosor
+        )
+    }
 }
-- var permisoConcedido — LA CAJITA: guarda true o false.
-- remember — EL CANDADO: evita que Compose olvide el valor cuando vuelve a ejecutar esa parte de la pantalla.
-- mutableStateOf — LA ALARMA: cuando cambia el valor, avisa a Compose para que actualice lo que depende de él.
- */
 
-/*
- * PREPARAR LA SOLICITUD DE PERMISO (LA VENTANA FLOTANTE DE ANDROID)
- *
- * SINTAXIS GENERAL:
- *
- * val nombreLauncher = rememberLauncherForActivityResult(
- *     contract = tipoDeContrato
- * ) { nombreRespuesta ->
- *     instrucciones
- * }
- *
- * NUESTRO CÓDIGO:
- *
- * val solicitarPermiso = rememberLauncherForActivityResult(
- *     contract = ActivityResultContracts.RequestPermission()
- * ) { concedido ->
- *     permisoConcedido = concedido
- * }
- *
- * 1. val solicitarPermiso (EL CONTROL REMOTO / DISPARADOR):
- *    - Es la variable donde guardas el control para activar la ventana cuando quieras.
- *    - Cuando el usuario toca el botón de tu pantalla, ejecutas:
- *
- *      solicitarPermiso.launch(...)
- *
- *    - Eso inicia la solicitud y Android puede mostrar
- *      la ventana flotante para aceptar o rechazar el permiso.
- *
- *    - val: Significa que no podemos reemplazar ese control
- *      por otro después.
- *
- *    - solicitarPermiso: Es el nombre que nosotros elegimos
- *      para nuestro control remoto.
- *
- *
- * 2. rememberLauncherForActivityResult (EL ENCARGADO / EL PUENTE):
- *
- *   - Es la función de Android que abre la ventana flotante del sistema y recuerda la respuesta.
-*    - "remember": Guarda la conexión en memoria para que la app no pierda la respuesta ni se confunda
-*      cuando la pantalla se redibuje.
-*
- *    - Es la función que prepara la solicitud del permiso
- *      y se encarga de recibir la respuesta de Android.
- *
- *    - Imagina que tenemos un encargado que hace dos trabajos:
- *      primero prepara la solicitud y después nos trae la respuesta.
- *
- *    - Sin esto: No tendríamos preparado ese control
- *      para pedir el permiso y recibir su resultado.
- *
- *    - Con esto: Dejamos preparado el control remoto
- *      que utilizaremos cuando el usuario toque el botón.
- *
- *    - "remember": Mantiene registrado ese control
- *      aunque Compose vuelva a leer el código de la pantalla.
- *
- *
- * 3. DENTRO DEL PARÉNTESIS (...) -> CONFIGURACIÓN Y TIPO DE VENTANA:
- *
- *    contract = ActivityResultContracts.RequestPermission()
- *
- *    - Los paréntesis llevan la CONFIGURACIÓN
- *      (los datos que la función necesita para prepararse).
- *
- *    - contract: Le dice al encargado qué trabajo queremos realizar.
- *
- *    - ActivityResultContracts: Es como una caja que contiene
- *      diferentes tipos de trabajos preparados por Android.
- *
- *    - RequestPermission(): Elegimos el trabajo de pedir UN permiso.
- *
- *    - El punto (.) permite entrar desde ActivityResultContracts
- *      hasta RequestPermission().
- *
- *    - El signo (=) indica qué tipo de trabajo
- *      estamos entregando a contract.
- *
- *      RESUMEN: 1. rememberLauncherForActivityResult: EL ENCARGADO
-        Imagina que contratamos a un encargado para realizar un trabajo.
-        Ese encargado necesita saber dos cosas:
-        - ¿Qué trabajo tiene que hacer? Solicitar un permiso.
-        - ¿Qué debe hacer cuando llegue la respuesta? Entregarnos true o false para guardarlo.
-
-        2. Dentro del paréntesis: LE DECIMOS QUÉ TRABAJO TIENE QUE PREPARAR
-            contract = ActivityResultContracts.RequestPermission()
-
-
-        Aquí le estamos diciendo:
-        «Encargado, el trabajo que vas a realizar es solicitar UN permiso de Android y recibir la respuesta de esa solicitud».
-        - contract: Indica qué tipo de trabajo debe preparar.
-        - ActivityResultContracts: Es como una caja con diferentes tipos de trabajos que Android ya tiene preparados.
-        - RequestPermission(): Elegimos el trabajo de solicitar un permiso./ Le dice que su trabajo es solicitar un permiso.
-        Y aquí viene un detalle importante: todavía no estamos indicando que el permiso es de cámara. Solamente estamos diciendo que queremos solicitar un permiso.
- *
- *
- * 4. DENTRO DE LAS LLAVES {...} -> LA ACCIÓN Y RESPUESTA DEL USUARIO:
- *
- *    { concedido ->
- *        permisoConcedido = concedido
- *    }
- *
- *    - Las llaves encierran el código que se ejecutará
- *      cuando Android entregue la respuesta.
- *
- *    - concedido: Es el mensajero que trae la respuesta.
- *
- *      * Si tocó "Permitir" -> concedido vale true.
- *      * Si tocó "Denegar"  -> concedido vale false.
- *
- *
- * 5. LA FLECHA (->): SEPARA LA RESPUESTA DE LO QUE HACEMOS CON ELLA
- *
- *    SINTAXIS GENERAL:
- *
- *    { nombreRespuesta ->
- *        instrucciones
- *    }
- *
- *    NUESTRO CÓDIGO:
- *
- *    { concedido ->
- *        permisoConcedido = concedido
- *    }
- *
- *    - Antes de la flecha: El dato que recibimos de Android.
- *    - Después de la flecha: Lo que hacemos con ese dato.
- *
- *
- * 6. permisoConcedido = concedido: GUARDAR LA RESPUESTA EN NUESTRA CAJITA
- *
- *    - ¿Recuerdas la variable que creamos en la primera parte?
- *
- *      var permisoConcedido by remember { mutableStateOf(false) }
- *
- *    - Aquí es donde finalmente la utilizamos.
- *
- *    - concedido: Es la respuesta que acaba de llegar de Android.
- *    - permisoConcedido: Es nuestra cajita donde guardamos la respuesta.
- *    - =: Guarda el valor recibido dentro de nuestra cajita.
- *
- *    EJEMPLO:
- *
- *    - Android devuelve true.
- *    - concedido recibe true.
- *    - permisoConcedido = concedido.
- *    - Nuestra cajita ahora guarda true.
- *    - mutableStateOf avisa a Compose que el valor cambió.
- *    - La pantalla puede mostrar "Permiso concedido".
- *
- * IMPORTANTE:
- * - Aquí todavía NO estamos abriendo la ventana de permiso.
- * - Solamente estamos preparando el control remoto.
- * - La ventana se solicitará después, cuando ejecutemos launch().
- */
-
-/*
- * TERCERA PARTE: MOSTRAR LA PANTALLA Y SOLICITAR EL PERMISO
- *
- * CÓDIGO COMPLETO:
- *
- * Column {
- *     Text("Escáner de código QR")
- *
- *     Button(
- *         onClick = {
- *             solicitarPermiso.launch(Manifest.permission.CAMERA)
- *         }
- *     ) {
- *         Text("Solicitar permiso de cámara")
- *     }
- *
- *     if (permisoConcedido) {
- *         Text("Permiso concedido")
- *     } else {
- *         Text("Permiso no concedido")
- *     }
- * }
- *
- *
- * 1. Column: COLOCAR UNA COSA DEBAJO DE OTRA
- *
- *    SINTAXIS GENERAL:
- *
- *    Column {
- *        primerElemento
- *        segundoElemento
- *        tercerElemento
- *    }
- *
- *    - Imagina que estás organizando tres objetos en una columna.
- *    - Primero colocas el título.
- *    - Debajo colocas el botón.
- *    - Y debajo colocas el mensaje del permiso.
- *
- *    - Sin esto: No tendríamos esta organización vertical.
- *    - Con esto: Los elementos aparecen uno debajo del otro.
- *
- *    LAS LLAVES { }:
- *    - La primera llave { abre la columna.
- *    - Dentro colocamos los elementos que queremos mostrar.
- *    - La última llave } cierra la columna.
- *
- *
- * 2. Text("Escáner de código QR"): MOSTRAR UN TEXTO EN EL TELÉFONO
- *
- *    SINTAXIS GENERAL:
- *
- *    Text("mensaje")
- *
- *    NUESTRO CÓDIGO:
- *
- *    Text("Escáner de código QR")
- *
- *    - Text es la herramienta que escribe algo en la pantalla.
- *    - Sin esto: No aparecería nuestro título.
- *    - Con esto: El usuario verá "Escáner de código QR".
- *
- *    LOS PARÉNTESIS ( ):
- *    - Dentro colocamos el texto que queremos mostrar.
- *
- *    LAS COMILLAS " ":
- *    - Indican que estamos escribiendo un texto.
- *    - Sin comillas: Kotlin intentaría interpretar
- *      esas palabras como instrucciones.
- *
- *
- * 3. Button: CREAR UN BOTÓN QUE EL USUARIO PUEDA PRESIONAR
- *
- *    SINTAXIS GENERAL:
- *
- *    Button(
- *        onClick = {
- *            instrucciones
- *        }
- *    ) {
- *        contenidoDelBoton
- *    }
- *
- *    NUESTRO CÓDIGO:
- *
- *    Button(
- *        onClick = {
- *            solicitarPermiso.launch(Manifest.permission.CAMERA)
- *        }
- *    ) {
- *        Text("Solicitar permiso de cámara")
- *    }
- *
- *    - Button crea un botón en nuestra pantalla.
- *    - Sin esto: No tendríamos ese botón para solicitar el permiso.
- *    - Con esto: El usuario tendrá un botón que puede tocar.
- *
- *    ¿POR QUÉ TENEMOS DOS PARES DE LLAVES?
- *
- *    PRIMERAS LLAVES:
- *
- *    onClick = {
- *        solicitarPermiso.launch(Manifest.permission.CAMERA)
- *    }
- *
- *    - Indican LO QUE HACE el botón cuando lo presionan.
- *
- *    SEGUNDAS LLAVES:
- *
- *    {
- *        Text("Solicitar permiso de cámara")
- *    }
- *
- *    - Indican LO QUE MUESTRA el botón.
- *
- *
- * 4. onClick: EL ENCARGADO DE ESCUCHAR CUANDO TOCAN EL BOTÓN
- *
- *    SINTAXIS GENERAL:
- *
- *    onClick = {
- *        instrucciones
- *    }
- *
- *    NUESTRO CÓDIGO:
- *
- *    onClick = {
- *        solicitarPermiso.launch(Manifest.permission.CAMERA)
- *    }
- *
- *    - Imagina que el botón tiene un timbre.
- *    - Cuando el usuario lo toca, onClick escucha ese timbre.
- *    - Entonces ejecuta las instrucciones que tiene dentro.
- *
- *    - Sin esto: No estaríamos indicando qué debe hacer el botón.
- *    - Con esto: Cuando el usuario toca el botón,
- *      se activa nuestro control remoto.
- *
- *    EL SIGNO =:
- *    - Le entrega a onClick las instrucciones que ejecutará.
- *
- *    LAS LLAVES { }:
- *    - Guardan las instrucciones que se ejecutarán
- *      cuando el usuario toque el botón.
- *
- *
- * 5. solicitarPermiso.launch(...): ACTIVAR NUESTRO CONTROL REMOTO
- *
- *    SINTAXIS GENERAL:
- *
- *    nombreLauncher.launch(datoNecesario)
- *
- *    NUESTRO CÓDIGO:
- *
- *    solicitarPermiso.launch(Manifest.permission.CAMERA)
- *
- *    - ¿Recuerdas el control remoto que preparamos
- *      en la segunda parte?
- *
- *      val solicitarPermiso = rememberLauncherForActivityResult(...)
- *
- *    - Aquí finalmente lo utilizamos.
- *
- *    solicitarPermiso: EL CONTROL REMOTO
- *    - Es el control que preparamos anteriormente.
- *
- *    launch: EL BOTÓN QUE ACTIVA EL CONTROL REMOTO
- *    - Imagina que tienes el control remoto de un televisor.
- *    - Tener el control en la mano no enciende la televisión.
- *    - Necesitas presionar el botón de encendido.
- *    - launch hace algo parecido: inicia la solicitud.
- *
- *    - Sin launch: La solicitud queda preparada,
- *      pero no la activamos.
- *    - Con launch: Android comienza a solicitar el permiso.
- *
- *    EL PUNTO . :
- *    - Permite utilizar launch desde solicitarPermiso.
- *
- *    LOS PARÉNTESIS ( ):
- *    - Dentro indicamos qué permiso queremos solicitar.
- *
- *
- * 6. Manifest.permission.CAMERA: PEDIR EL PERMISO DE LA CÁMARA
- *
- *    - En la segunda parte dijimos que el encargado
- *      tenía que preparar una solicitud de permiso.
- *
- *    - Pero todavía no habíamos dicho QUÉ permiso.
- *
- *    - Aquí finalmente le decimos que queremos
- *      el permiso para utilizar la cámara.
- *
- *    Manifest: CONTIENE INFORMACIÓN DE ANDROID
- *    - En este caso utilizamos su clase de permisos.
- *
- *    permission: LOS PERMISOS DISPONIBLES
- *    - Permite acceder a los nombres de permisos.
- *
- *    CAMERA: EL PERMISO DE CÁMARA
- *    - Identifica exactamente el permiso que necesitamos.
- *
- *    - Sin indicar CAMERA: No le estaríamos entregando
- *      el permiso específico que queremos solicitar.
- *
- *    - Con esto: Android sabe que queremos
- *      solicitar permiso para utilizar la cámara.
- *
- *
- * 7. if: PREGUNTAR SI EL PERMISO FUE CONCEDIDO
- *
- *    SINTAXIS GENERAL:
- *
- *    if (condicion) {
- *        instruccionesSiEsVerdadero
- *    } else {
- *        instruccionesSiEsFalso
- *    }
- *
- *    NUESTRO CÓDIGO:
- *
- *    if (permisoConcedido) {
- *        Text("Permiso concedido")
- *    } else {
- *        Text("Permiso no concedido")
- *    }
- *
- *    - if significa SI.
- *    - Imagina que le hacemos una pregunta a nuestra cajita:
- *
- *      ¿permisoConcedido guarda true?
- *
- *    - Si la respuesta es SÍ, mostramos "Permiso concedido".
- *    - Si la respuesta es NO, mostramos "Permiso no concedido".
- *
- *    LOS PARÉNTESIS ( ):
- *    - Dentro colocamos la condición que queremos comprobar.
- *
- *    LAS PRIMERAS LLAVES { }:
- *    - Contienen lo que hacemos si la condición es verdadera.
- *
- *
- * 8. else: SI NO SE CUMPLE LA CONDICIÓN
- *
- *    - else significa SI NO.
- *
- *    - Si permisoConcedido no vale true,
- *      ejecutamos las instrucciones de else.
- *
- *    - En nuestro caso mostramos:
- *
- *      Text("Permiso no concedido")
- *
- *    - Sin else: Si la condición fuera false,
- *      no mostraríamos este mensaje alternativo.
- *
- *    - Con else: Podemos mostrar un mensaje diferente
- *      cuando el permiso no está concedido.
- *
- *
- * 9. ¿CÓMO FUNCIONA TODA ESTA PARTE?
- *
- *    PASO 1:
- *    - Column organiza los elementos de la pantalla.
- *
- *    PASO 2:
- *    - Text muestra "Escáner de código QR".
- *
- *    PASO 3:
- *    - Button muestra "Solicitar permiso de cámara".
- *
- *    PASO 4:
- *    - El usuario toca el botón.
- *
- *    PASO 5:
- *    - onClick ejecuta las instrucciones.
- *
- *    PASO 6:
- *    - solicitarPermiso.launch(...) activa
- *      el control remoto de la segunda parte.
- *
- *    PASO 7:
- *    - Manifest.permission.CAMERA indica que
- *      queremos solicitar el permiso de cámara.
- *
- *    PASO 8:
- *    - Android procesa la solicitud.
- *
- *    PASO 9:
- *    - La respuesta llega a concedido,
- *      que declaramos en la segunda parte.
- *
- *    PASO 10:
- *    - Guardamos esa respuesta en permisoConcedido,
- *      nuestra variable de la primera parte.
- *
- *    PASO 11:
- *    - mutableStateOf avisa que cambió el valor.
- *
- *    PASO 12:
- *    - if revisa si permisoConcedido vale true o false.
- *
- *    PASO 13:
- *    - La pantalla muestra el mensaje correspondiente.
- *
- * IMPORTANTE:
- * - Al comenzar, permisoConcedido vale false.
- * - Por eso inicialmente aparecerá "Permiso no concedido".
- * - Ese mensaje todavía no comprueba si Android ya tenía
- *   concedido el permiso antes de abrir la pantalla.
- * - Además, este código todavía NO abre la cámara:
- *   solamente solicita el permiso.
- */
+// Acepta códigos QR simples o JSON.
+private fun extraerCodigoQr(texto: String): String {
+    return try {
+        val json = JSONObject(texto)
+        json.optString("codigoQr", texto).trim()
+    } catch (error: Exception) {
+        texto.trim()
+    }
+}
 
 

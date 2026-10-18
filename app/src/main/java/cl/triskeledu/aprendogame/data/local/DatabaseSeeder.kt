@@ -77,7 +77,7 @@ object DatabaseSeeder {
                     radioToleranciaMetros = 60.0
                 )
             )
-            database.puntoInteresDao().insertarPuntos(puntos)
+            database.puntoInteresDao().insertarPuntosIniciales(puntos)
 
             // 2. Poblar Cápsulas Educativas sobre Inteligencia Artificial asociadas a cada QR
             val capsulas = listOf(
@@ -136,7 +136,7 @@ object DatabaseSeeder {
                     descripcion = "Exploración del arte interactivo, música y síntesis multimedia con Transformers."
                 )
             )
-            database.capsulaDao().insertarCapsulas(capsulas)
+            database.capsulaDao().insertarCapsulasIniciales(capsulas)
 
         }
     }

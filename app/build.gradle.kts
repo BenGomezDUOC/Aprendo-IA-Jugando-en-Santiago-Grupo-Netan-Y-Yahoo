@@ -48,6 +48,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.material3)
 
     // Room Database
     implementation(libs.androidx.room.runtime)
@@ -63,7 +64,12 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
     implementation(libs.androidx.navigation.compose)
-    implementation("androidx.compose.material:material-icons-extended") // Permite utilizar los iconos de Material en Compose
+    implementation("androidx.compose.material:material-icons-extended")
+    // Reproduce videos educativos dentro de la aplicación.
+    implementation("androidx.media3:media3-exoplayer:1.6.1")
+    // Muestra los controles del reproductor:
+    // reproducir, pausar y avanzar.
+    implementation("androidx.media3:media3-ui:1.6.1")
 
 
     implementation(libs.androidx.camera.core)
@@ -72,7 +78,21 @@ dependencies {
     implementation(libs.androidx.camera.view)
     implementation(libs.mlkit.barcode.scanning)
 
+    // Google Code Scanner: lector QR utilizado en el ejemplo del profesor
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
+
     // OpenStreetMap y GPS
     implementation(libs.osmdroid.android)
     implementation(libs.play.services.location)
+
+    implementation("androidx.camera:camera-core:1.4.2")
+    implementation("androidx.camera:camera-camera2:1.4.2")
+    implementation("androidx.camera:camera-lifecycle:1.4.2")
+    implementation("androidx.camera:camera-view:1.4.2")
+
+    // Detecta rostros en fotografías.
+    implementation("com.google.mlkit:face-detection:16.1.7")
+
+// Detecta y lee códigos QR en fotografías.
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
 }

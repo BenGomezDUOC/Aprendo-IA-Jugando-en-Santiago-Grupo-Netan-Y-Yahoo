@@ -21,6 +21,10 @@ interface CapsulaDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertarCapsulas(capsulas: List<Capsula>)
 
+    // Inserta cápsulas iniciales sin reemplazar las existentes.
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertarCapsulasIniciales(capsulas: List<Capsula>)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertarCapsula(capsula: Capsula): Long
 }

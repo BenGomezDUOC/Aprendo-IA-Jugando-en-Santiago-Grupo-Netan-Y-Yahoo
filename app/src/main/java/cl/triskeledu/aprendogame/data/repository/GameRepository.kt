@@ -1,9 +1,10 @@
-
 package cl.triskeledu.aprendogame.data.repository
 
 import cl.triskeledu.aprendogame.model.Capsula
+import cl.triskeledu.aprendogame.model.DescubrimientoQr
 import cl.triskeledu.aprendogame.model.PuntoInteres
 import cl.triskeledu.aprendogame.model.Usuario
+import cl.triskeledu.aprendogame.model.VideoVisto
 import cl.triskeledu.aprendogame.model.VisitaRealizada
 import kotlinx.coroutines.flow.Flow
 
@@ -31,7 +32,6 @@ interface GameRepository {
 
     suspend fun getPuntoPorId(id: Int): PuntoInteres?
 
-    // Marca un punto como completado para un jugador.
     suspend fun marcarPuntoCompletado(
         id: Int,
         puntosRecompensa: Int = 0,
@@ -45,7 +45,6 @@ interface GameRepository {
 
     suspend fun validarQr(codigoQr: String): Capsula?
 
-    // Registra la visita asociándola al jugador autenticado.
     suspend fun registrarVisitaConEvidencia(
         puntoId: Int,
         capsulaId: Int?,
@@ -53,6 +52,27 @@ interface GameRepository {
         puntosGanados: Int,
         usuarioId: Int
     ): Long
+
+    // --------------------------------------------------
+    // DESCUBRIMIENTOS QR
+    // Registro individual por jugador
+    // --------------------------------------------------
+
+    // Registra el descubrimiento de una cápsula.
+    // Devuelve el ID creado o -1 si ya existía.
+    suspend fun registrarDescubrimientoQr(
+        descubrimiento: DescubrimientoQr
+    ): Long
+
+    // Cuenta los QR descubiertos por un jugador.
+    fun contarQrDescubiertos(
+        usuarioId: Int
+    ): Flow<Int>
+
+    // Obtiene los QR descubiertos por un jugador.
+    fun getDescubrimientosPorUsuario(
+        usuarioId: Int
+    ): Flow<List<DescubrimientoQr>>
 
     // --------------------------------------------------
     // MULTIMEDIA Y CONTENIDOS IA
@@ -64,20 +84,37 @@ interface GameRepository {
     fun getTodasLasCapsulas(): Flow<List<Capsula>>
 
     // --------------------------------------------------
+    // VIDEOS VISTOS
+    // Registro individual por jugador
+    // --------------------------------------------------
+
+    // Registra un video visto, sin duplicarlo.
+    suspend fun registrarVideoVisto(
+        videoVisto: VideoVisto
+    ): Long
+
+    // Cuenta los videos vistos por un jugador.
+    fun contarVideosVistos(
+        usuarioId: Int
+    ): Flow<Int>
+
+    // Obtiene los videos vistos por un jugador.
+    fun getVideosVistosPorUsuario(
+        usuarioId: Int
+    ): Flow<List<VideoVisto>>
+
+    // --------------------------------------------------
     // GAMIFICACIÓN Y PERFIL
     // Ranking y puntajes - Juan Pablo
     // --------------------------------------------------
 
-    // Obtiene los datos de un usuario específico.
     fun getUsuario(id: Int): Flow<Usuario?>
 
-    // Suma puntos únicamente al jugador indicado.
     suspend fun sumarPuntos(
         puntos: Int,
         usuarioId: Int
     )
 
-    // Obtiene las visitas de un jugador específico.
     fun getHistorialVisitas(
         usuarioId: Int
     ): Flow<List<VisitaRealizada>>

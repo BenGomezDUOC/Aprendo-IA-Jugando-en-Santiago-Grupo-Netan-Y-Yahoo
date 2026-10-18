@@ -51,6 +51,9 @@ import cl.triskeledu.aprendogame.model.Usuario
 
 import kotlinx.coroutines.flow.Flow
 
+import androidx.compose.ui.platform.LocalContext
+import cl.triskeledu.aprendogame.data.local.AppDatabase
+
 /**
  * Pantalla 3: Selección de jugador.
  *
@@ -67,6 +70,13 @@ fun SeleccionJugadorScreen(
     onIniciarSesion: (Usuario, String) -> Unit,
     onCrearJugador: () -> Unit
 ) {
+
+    // Accede a la base de datos Room.
+    val context = LocalContext.current
+
+    val database = remember(context) {
+        AppDatabase.getInstance(context.applicationContext)
+    }
 
     // Observa los usuarios almacenados en Room.
     val jugadores by jugadoresFlow.collectAsState(
@@ -121,6 +131,16 @@ fun SeleccionJugadorScreen(
                 items = jugadores,
                 key = { jugador -> jugador.id }
             ) { jugador ->
+
+                // Observa cuántos QR ha descubierto este jugador.
+                val qrDescubiertosFlow = remember(jugador.id) {
+                    database.descubrimientoQrDao()
+                        .contarQrDescubiertos(jugador.id)
+                }
+
+                val qrDescubiertos by qrDescubiertosFlow.collectAsState(
+                    initial = 0
+                )
 
                 // Selecciona el recurso según el avatar
                 // que tiene guardado este usuario en Room.
@@ -193,7 +213,7 @@ fun SeleccionJugadorScreen(
                             // Pendiente de conectar con el conteo
                             // de QR descubiertos por usuario.
                             Text(
-                                text = "QR encontrados: pendiente",
+                                text = "QR encontrados: $qrDescubiertos",
                                 fontSize = 12.sp,
                                 color = Color.Gray
                             )

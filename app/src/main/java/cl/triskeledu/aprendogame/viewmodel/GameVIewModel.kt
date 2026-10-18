@@ -16,33 +16,32 @@ import cl.triskeledu.aprendogame.model.PuntoInteres
 import cl.triskeledu.aprendogame.model.Usuario
 import cl.triskeledu.aprendogame.model.VisitaRealizada
 
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-/**
- * ViewModel principal de Triskeledu.
- *
- * Integra:
- * 1. Los datos de Room mediante el repositorio de Benjamín.
- * 2. La ubicación GPS del jugador.
- * 3. El punto turístico seleccionado.
- * 4. El usuario que inició sesión.
- * 5. El progreso individual del jugador.
- */
+import cl.triskeledu.aprendogame.validation.SelfieValidator
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+import cl.triskeledu.aprendogame.model.Capsula
+import cl.triskeledu.aprendogame.model.VideoVisto
+
+
+
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class GameViewModel(
     application: Application
 ) : AndroidViewModel(application) {
 
-    // Conecta el ViewModel con Room.
+    // Repositorio principal conectado a Room.
     private val repository: GameRepository =
         GameRepositoryImpl(AppDatabase.getInstance(application))
 
@@ -50,18 +49,15 @@ class GameViewModel(
     // JUGADOR ACTIVO
     // --------------------------------------------------
 
-    // null significa que todavía no hay una sesión activa.
     private val _usuarioActivoId = MutableStateFlow<Int?>(null)
 
     val usuarioActivoId: StateFlow<Int?> =
         _usuarioActivoId.asStateFlow()
 
-    // Se ejecuta después de verificar la contraseña.
     fun establecerUsuarioActivo(id: Int) {
         _usuarioActivoId.value = id
     }
 
-    // Permite limpiar el usuario cuando cierre sesión.
     fun cerrarSesion() {
         _usuarioActivoId.value = null
         _puntoSeleccionado.value = null
@@ -71,7 +67,7 @@ class GameViewModel(
     // PUNTOS TURÍSTICOS
     // --------------------------------------------------
 
-    // Observa los puntos turísticos registrados en Room.
+    // Todos los lugares turísticos disponibles en Room.
     val puntos: StateFlow<List<PuntoInteres>> =
         repository.getPuntos().stateIn(
             scope = viewModelScope,
@@ -80,11 +76,9 @@ class GameViewModel(
         )
 
     // --------------------------------------------------
-    // DATOS DEL USUARIO AUTENTICADO
+    // USUARIO AUTENTICADO
     // --------------------------------------------------
 
-    // Cambia automáticamente el usuario observado
-    // cuando cambia el ID del jugador activo.
     val usuario: StateFlow<Usuario?> =
         _usuarioActivoId.flatMapLatest { id ->
 
@@ -101,10 +95,9 @@ class GameViewModel(
         )
 
     // --------------------------------------------------
-    // HISTORIAL INDIVIDUAL
+    // HISTORIAL DE VISITAS
     // --------------------------------------------------
 
-    // Obtiene únicamente las visitas del usuario activo.
     val historialVisitas: StateFlow<List<VisitaRealizada>> =
         _usuarioActivoId.flatMapLatest { id ->
 
@@ -121,26 +114,123 @@ class GameViewModel(
         )
 
     // --------------------------------------------------
+    // QR DESCUBIERTOS
+    // --------------------------------------------------
+
+    val qrDescubiertos: StateFlow<Int> =
+        _usuarioActivoId.flatMapLatest { id ->
+
+            if (id == null) {
+                flowOf(0)
+            } else {
+                repository.contarQrDescubiertos(id)
+            }
+
+        }.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = 0
+        )
+
+    // --------------------------------------------------
+// CÁPSULAS EDUCATIVAS
+// --------------------------------------------------
+
+    // Obtiene las cápsulas guardadas en Room.
+    val capsulas: StateFlow<List<Capsula>> =
+        repository.getTodasLasCapsulas().stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
+    // --------------------------------------------------
+    // VIDEOS VISTOS
+    // --------------------------------------------------
+
+    // Recupera los videos vistos por el jugador activo.
+    val videosVistos: StateFlow<List<VideoVisto>> =
+        _usuarioActivoId.flatMapLatest { id ->
+            if (id == null) {
+                flowOf(emptyList())
+            } else {
+                repository.getVideosVistosPorUsuario(id)
+            }
+        }.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
+    // Guarda un video como visto cuando termina su reproducción.
+    fun registrarVideoVisto(capsulaId: Int) {
+        val idJugador = _usuarioActivoId.value ?: return
+
+        viewModelScope.launch {
+            repository.registrarVideoVisto(
+                VideoVisto(
+                    usuarioId = idJugador,
+                    capsulaId = capsulaId
+                )
+            )
+        }
+    }
+
+    // --------------------------------------------------
+    // VIDEOS DESCUBIERTOS
+    // --------------------------------------------------
+
+    // Cuenta las cápsulas encontradas por QR
+    // que contienen una URL de video.
+    val videosDescubiertos: StateFlow<Int> =
+        _usuarioActivoId.flatMapLatest { id ->
+
+            if (id == null) {
+                flowOf(0)
+            } else {
+                combine(
+                    repository.getDescubrimientosPorUsuario(id),
+                    repository.getTodasLasCapsulas()
+                ) { descubrimientos, capsulas ->
+
+                    val idsDescubiertos = descubrimientos
+                        .map { it.capsulaId }
+                        .toSet()
+
+                    capsulas.count { capsula ->
+                        capsula.id in idsDescubiertos &&
+                                capsula.urlVideo.isNotBlank()
+                    }
+                }
+            }
+
+        }.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = 0
+        )
+
+    // --------------------------------------------------
     // UBICACIÓN GPS
     // --------------------------------------------------
 
-    // Guarda temporalmente la ubicación actual.
-    private val _ubicacionActual = MutableStateFlow<Location?>(null)
+    private val _ubicacionActual =
+        MutableStateFlow<Location?>(null)
 
     val ubicacionActual: StateFlow<Location?> =
         _ubicacionActual.asStateFlow()
 
     private var locationService: LocationService? = null
 
-    // Inicia la recepción de actualizaciones GPS.
     fun iniciarRastreoGPS(context: Context) {
 
         if (locationService == null) {
-            locationService = LocationService(context.applicationContext)
+            locationService = LocationService(
+                context.applicationContext
+            )
         }
 
         viewModelScope.launch {
-
             locationService?.obtenerUbicacionFlow()
                 ?.catch { error ->
                     error.printStackTrace()
@@ -161,7 +251,6 @@ class GameViewModel(
     val puntoSeleccionado: StateFlow<PuntoInteres?> =
         _puntoSeleccionado.asStateFlow()
 
-    // Guarda el punto seleccionado para mostrar sus detalles.
     fun seleccionarPunto(punto: PuntoInteres?) {
         _puntoSeleccionado.value = punto
     }
@@ -170,11 +259,11 @@ class GameViewModel(
     // CÁLCULO DE DISTANCIA
     // --------------------------------------------------
 
-    // Calcula la distancia entre el jugador y un punto turístico.
-    fun calcularDistanciaMetros(punto: PuntoInteres): Float? {
+    fun calcularDistanciaMetros(
+        punto: PuntoInteres
+    ): Float? {
 
         val ubicacion = _ubicacionActual.value ?: return null
-
         val resultados = FloatArray(1)
 
         Location.distanceBetween(
@@ -192,14 +281,13 @@ class GameViewModel(
     // GAMIFICACIÓN
     // --------------------------------------------------
 
-    // Suma la recompensa al jugador autenticado.
+    // Conservamos esta función para no afectar
+    // las llamadas existentes de otras pantallas.
     fun marcarCompletado(id: Int) {
 
-        // Si nadie inició sesión, no se suman puntos.
         val idJugador = _usuarioActivoId.value ?: return
 
         viewModelScope.launch {
-
             repository.marcarPuntoCompletado(
                 id = id,
                 puntosRecompensa = 10,
@@ -207,4 +295,98 @@ class GameViewModel(
             )
         }
     }
+
+    // --------------------------------------------------
+// VALIDACIÓN DE SELFIE TURÍSTICA
+// --------------------------------------------------
+
+    fun validarYRegistrarSelfie(
+        rutaFoto: String,
+        codigoQrEsperado: String,
+        puntoId: Int,
+        capsulaId: Int,
+        onResultado: (Boolean, String) -> Unit
+    ) {
+        val idJugador = _usuarioActivoId.value
+
+        if (idJugador == null) {
+            onResultado(false, "Debes iniciar sesión")
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+
+                // PASO 1: Validar el rostro y el QR de la selfie.
+                // La foto ya está guardada en la galería.
+                val selfieValida = withContext(Dispatchers.IO) {
+                    SelfieValidator.validar(
+                        context = getApplication(),
+                        rutaFoto = rutaFoto,
+                        codigoQrEsperado = codigoQrEsperado
+                    )
+                }
+
+                if (!selfieValida) {
+                    onResultado(
+                        false,
+                        "La fotografía debe mostrar tu rostro y el QR correcto. La foto permanece en tu galería."
+                    )
+                    return@launch
+                }
+
+                // PASO 2: Verificar que el QR pertenezca
+                // a la cápsula y al punto turístico.
+                val capsulaVerificada = withContext(Dispatchers.IO) {
+                    repository.validarQr(codigoQrEsperado)
+                }
+
+                if (
+                    capsulaVerificada == null ||
+                    capsulaVerificada.id != capsulaId ||
+                    capsulaVerificada.puntoId != puntoId
+                ) {
+                    onResultado(
+                        false,
+                        "El QR no corresponde a este lugar. La foto permanece en tu galería."
+                    )
+                    return@launch
+                }
+
+                // PASO 3: Registrar la visita y otorgar 100 puntos.
+                // El repositorio evita duplicar la recompensa.
+                val resultado = withContext(Dispatchers.IO) {
+                    repository.registrarVisitaConEvidencia(
+                        puntoId = puntoId,
+                        capsulaId = capsulaId,
+                        rutaFotoSelfie = rutaFoto,
+                        puntosGanados = 100,
+                        usuarioId = idJugador
+                    )
+                }
+
+                if (resultado == -1L) {
+                    onResultado(
+                        false,
+                        "Ya recibiste los 100 puntos por este lugar. La foto permanece en tu galería."
+                    )
+                } else {
+                    onResultado(
+                        true,
+                        "¡Selfie validada! Ganaste 100 puntos."
+                    )
+                }
+
+            } catch (e: Exception) {
+                onResultado(
+                    false,
+                    "No se pudo validar o registrar la fotografía. La foto permanece en tu galería."
+                )
+            }
+        }
+    }
+
 }
+
+
+
