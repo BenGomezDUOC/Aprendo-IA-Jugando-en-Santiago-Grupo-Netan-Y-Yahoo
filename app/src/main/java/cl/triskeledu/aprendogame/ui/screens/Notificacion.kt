@@ -1,4 +1,4 @@
-
+﻿
 package cl.triskeledu.aprendogame.ui.screens
 
 import androidx.compose.foundation.clickable
@@ -96,6 +96,20 @@ fun NotificacionesScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            
+                Spacer(modifier = Modifier.height(20.dp))
+                FilledTonalButton(
+                    onClick = {
+                        gameViewModel.enviarNotificacionPruebaLocal()
+                    }
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Notifications,
+                        contentDescription = null
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Enviar aviso de prueba")
+                }
             }
 
         } else {

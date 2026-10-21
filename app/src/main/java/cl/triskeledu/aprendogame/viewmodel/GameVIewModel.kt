@@ -1,4 +1,4 @@
-package cl.triskeledu.aprendogame.viewmodel
+﻿package cl.triskeledu.aprendogame.viewmodel
 
 import android.app.Application
 import android.content.Context
@@ -15,6 +15,7 @@ import cl.triskeledu.aprendogame.model.PuntoInteres
 import cl.triskeledu.aprendogame.model.Usuario
 import cl.triskeledu.aprendogame.model.VisitaRealizada
 import cl.triskeledu.aprendogame.model.Notificacion
+import cl.triskeledu.aprendogame.notification.NotificationHelper
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -313,6 +314,14 @@ class GameViewModel(
                     rutaDestino = rutaDestino
                 )
             )
+
+            // Disparar la notificación nativa en la barra de Android (Recurso Nativo IE 2.4.1)
+            NotificationHelper.mostrarNotificacion(
+                context = getApplication(),
+                titulo = titulo,
+                mensaje = mensaje,
+                rutaDestino = rutaDestino
+            )
         }
     }
 
@@ -449,6 +458,12 @@ class GameViewModel(
                     usuarioId = idJugador,
                     capsulaId = capsulaId
                 )
+            )
+            registrarNotificacion(
+                titulo = "¡Cápsula de IA completada! 🎬",
+                mensaje = "Has completado la visualización de la cápsula educativa.",
+                tipo = "VIDEO",
+                rutaDestino = "coleccion"
             )
         }
     }
@@ -703,7 +718,14 @@ class GameViewModel(
                         true,
                         "¡Selfie validada! Ganaste 100 puntos."
                     )
-                }
+                
+                    registrarNotificacion(
+                        titulo = "¡Selfie validada! 📸",
+                        mensaje = "Ganaste 100 puntos por tu visita en terreno.",
+                        tipo = "EVIDENCIA",
+                        rutaDestino = "historial_actividades"
+                    )
+}
 
             } catch (e: Exception) {
                 onResultado(

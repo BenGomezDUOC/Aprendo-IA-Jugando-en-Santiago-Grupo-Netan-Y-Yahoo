@@ -1,4 +1,4 @@
-package cl.triskeledu.aprendogame.ui.screens
+﻿package cl.triskeledu.aprendogame.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -44,7 +44,8 @@ fun DashboardScreen(
     onVideoAdicionalClick: (Int) -> Unit,
     onVideoRegistradoClick: (VideoRegistrado) -> Unit = {},
     onProgresoClick: () -> Unit,
-    onContenidosEducativosClick: () -> Unit
+    onContenidosEducativosClick: () -> Unit,
+    onNotificacionesClick: () -> Unit = {}
 ) {
     // Conservamos los parámetros de video para no romper llamadas anteriores.
     // Los videos ahora se muestran exclusivamente en ContenidosEducativosScreen.
@@ -56,6 +57,7 @@ fun DashboardScreen(
     val videosVistos by gameViewModel.videosVistos.collectAsStateWithLifecycle()
     val videosAdicionalesVistos by gameViewModel.videosAdicionalesVistos.collectAsStateWithLifecycle()
     val puntosTuristicos by gameViewModel.puntos.collectAsStateWithLifecycle()
+    val notificacionesNoLeidas by gameViewModel.notificacionesNoLeidas.collectAsStateWithLifecycle()
 
     // Accedemos a Room para consultar los videos administrativos.
     val context = LocalContext.current
@@ -148,16 +150,37 @@ fun DashboardScreen(
             .padding(horizontal = 20.dp, vertical = 24.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Text(
-                text = "¡Hola, ${usuario?.nombre ?: "Explorador"}! 👋",
-                fontSize = 26.sp, fontWeight = FontWeight.ExtraBold,
-                color = AzulProfundo
-            )
-            Text(
-                text = "Tu aventura por Santiago continúa aquí.",
-                fontSize = 14.sp, color = GrisTexto
-            )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text(
+                    text = "¡Hola, ${usuario?.nombre ?: "Explorador"}! 👋",
+                    fontSize = 26.sp, fontWeight = FontWeight.ExtraBold,
+                    color = AzulProfundo
+                )
+                Text(
+                    text = "Tu aventura por Santiago continúa aquí.",
+                    fontSize = 14.sp, color = GrisTexto
+                )
+            }
+            IconButton(onClick = onNotificacionesClick) {
+                BadgedBox(
+                    badge = {
+                        if (notificacionesNoLeidas > 0) {
+                            Badge { Text("$notificacionesNoLeidas") }
+                        }
+                    }
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Notifications,
+                        contentDescription = "Notificaciones",
+                        tint = AzulProfundo
+                    )
+                }
+            }
         }
 
         Card(
