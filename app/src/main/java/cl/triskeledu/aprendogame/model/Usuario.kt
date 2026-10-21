@@ -7,15 +7,21 @@ import androidx.room.PrimaryKey
 
 /**
  * Representa a un usuario de Triskeledu.
- * Permite registrar jugadores y almacenar sus puntos.
+ *
+ * Guarda sus datos personales, rol, avatar y puntos.
+ *
+ * tipoCuentaSistema identifica únicamente las
+ * cuentas predefinidas de la aplicación.
  */
 @Entity(
     tableName = "usuarios",
     indices = [
-        Index(value = ["correo"], unique = true)
+        Index(value = ["correo"], unique = true),
+        Index(value = ["tipoCuentaSistema"], unique = true)
     ]
 )
 data class Usuario(
+
     @PrimaryKey(autoGenerate = true)
     val id: Int = 0,
 
@@ -28,5 +34,10 @@ data class Usuario(
     val avatar: Int = 1,
 
     val rol: Rol = Rol.CLIENTE,
-    val puntosAcumulados: Int = 0
+    val puntosAcumulados: Int = 0,
+
+    // Solo las cuentas predefinidas tienen un valor.
+    // Los demás usuarios tienen null.
+    val tipoCuentaSistema: String? = null
 )
+

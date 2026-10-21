@@ -7,6 +7,7 @@ import cl.triskeledu.aprendogame.model.Usuario
 import cl.triskeledu.aprendogame.model.VideoVisto
 import cl.triskeledu.aprendogame.model.VisitaRealizada
 import kotlinx.coroutines.flow.Flow
+import cl.triskeledu.aprendogame.model.Notificacion
 
 /**
  * Interfaz del Repositorio principal.
@@ -31,12 +32,6 @@ interface GameRepository {
     fun getPuntos(): Flow<List<PuntoInteres>>
 
     suspend fun getPuntoPorId(id: Int): PuntoInteres?
-
-    suspend fun marcarPuntoCompletado(
-        id: Int,
-        puntosRecompensa: Int = 0,
-        usuarioId: Int
-    )
 
     // --------------------------------------------------
     // ESCÁNER QR Y VALIDACIÓN
@@ -110,6 +105,29 @@ interface GameRepository {
 
     fun getUsuario(id: Int): Flow<Usuario?>
 
+    // Obtiene directamente los datos del usuario activo.
+    suspend fun getUsuarioDirecto(id: Int): Usuario?
+
+    // Comprueba si otro usuario tiene el mismo correo.
+    suspend fun contarCorreoDeOtroUsuario(
+        correo: String,
+        usuarioId: Int
+    ): Int
+
+    // Edita los datos personales del usuario.
+    // Permite modificar también la contraseña.
+    // Conserva su ID, rol, puntos y progreso.
+    suspend fun actualizarPerfil(
+        usuarioId: Int,
+        nombre: String,
+        alias: String,
+        correo: String,
+        telefono: String,
+        direccion: String,
+        avatar: Int,
+        contrasenaHash: String
+    ): Int
+
     suspend fun sumarPuntos(
         puntos: Int,
         usuarioId: Int
@@ -127,5 +145,37 @@ interface GameRepository {
     suspend fun crearPunto(punto: PuntoInteres): Long
 
     suspend fun crearCapsula(capsula: Capsula): Long
+
+    // --------------------------------------------------
+    // NOTIFICACIONES
+    // Cliente, generador y administrador
+    // --------------------------------------------------
+
+    // Guarda una notificación para un usuario.
+    suspend fun registrarNotificacion(
+        notificacion: Notificacion
+    ): Long
+
+    // Obtiene las notificaciones del usuario.
+    fun getNotificacionesPorUsuario(
+        usuarioId: Int
+    ): Flow<List<Notificacion>>
+
+    // Cuenta las notificaciones sin leer.
+    fun contarNotificacionesNoLeidas(
+        usuarioId: Int
+    ): Flow<Int>
+
+    // Marca una notificación como leída.
+    suspend fun marcarNotificacionLeida(
+        notificacionId: Int,
+        usuarioId: Int
+    ): Int
+
+    // Marca todas las notificaciones como leídas.
+    suspend fun marcarTodasComoLeidas(
+        usuarioId: Int
+    ): Int
+
 }
 

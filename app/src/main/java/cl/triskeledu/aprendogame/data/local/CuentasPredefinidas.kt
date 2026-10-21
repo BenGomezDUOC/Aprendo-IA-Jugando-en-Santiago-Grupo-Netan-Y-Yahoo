@@ -5,10 +5,12 @@ import cl.triskeledu.aprendogame.model.Usuario
 import cl.triskeledu.aprendogame.security.PasswordUtils
 
 /**
- * Crea las cuentas predefinidas del sistema.
+ * Crea las cuentas iniciales de Triskeledu.
  *
- * No modifica los clientes registrados.
- * No vuelve a insertar una cuenta si su correo ya existe.
+ * Cada cuenta se identifica mediante tipoCuentaSistema.
+ *
+ * Si ya existe, conserva su nombre, correo,
+ * contraseña, avatar, puntos y progreso.
  */
 object CuentasPredefinidas {
 
@@ -20,46 +22,47 @@ object CuentasPredefinidas {
         // 1. CUENTA DE ADMINISTRADOR
         // -----------------------------------------
 
-        val correoAdmin = "admin@triskeledu.cl"
-        val hashAdmin = PasswordUtils.crearHash("Admin12345!")
-        val adminExistente = usuarioDao.buscarPorCorreo(correoAdmin)
+        val adminExistente =
+            usuarioDao.buscarCuentaSistema("ADMIN_PRINCIPAL")
 
+        // Solo crea la cuenta si todavía no existe.
         if (adminExistente == null) {
+
             val administrador = Usuario(
                 nombre = "Administrador",
                 alias = "Admin",
-                correo = correoAdmin,
-                contrasena = hashAdmin,
-                rol = Rol.ADMINISTRADOR
+                correo = "admin@triskeledu.cl",
+                contrasena = PasswordUtils.crearHash("123"),
+                rol = Rol.ADMINISTRADOR,
+                tipoCuentaSistema = "ADMIN_PRINCIPAL"
             )
+
             usuarioDao.registrarJugador(administrador)
-        } else if (!PasswordUtils.verificarContrasena("Admin12345!", adminExistente.contrasena)) {
-            usuarioDao.insertarOActualizar(
-                adminExistente.copy(contrasena = hashAdmin)
-            )
         }
 
         // -----------------------------------------
         // 2. CUENTA DE GENERADOR DE CONTENIDO
         // -----------------------------------------
 
-        val correoGenerador = "generador@triskeledu.cl"
-        val hashGenerador = PasswordUtils.crearHash("Generador12345!")
-        val generadorExistente = usuarioDao.buscarPorCorreo(correoGenerador)
+        val generadorExistente =
+            usuarioDao.buscarCuentaSistema("GENERADOR_PRINCIPAL")
 
+        // Solo crea la cuenta si todavía no existe.
         if (generadorExistente == null) {
+
             val generador = Usuario(
-                nombre = "Generador de contenido",
-                alias = "Generador",
-                correo = correoGenerador,
-                contrasena = hashGenerador,
-                rol = Rol.GENERADOR
+                nombre = "Contenido",
+                alias = "GenCont",
+                correo = "contenido@triskeledu.cl",
+                contrasena = PasswordUtils.crearHash("123"),
+                rol = Rol.GENERADOR,
+                tipoCuentaSistema = "GENERADOR_PRINCIPAL"
             )
+
             usuarioDao.registrarJugador(generador)
-        } else if (!PasswordUtils.verificarContrasena("Generador12345!", generadorExistente.contrasena)) {
-            usuarioDao.insertarOActualizar(
-                generadorExistente.copy(contrasena = hashGenerador)
-            )
         }
     }
 }
+
+
+

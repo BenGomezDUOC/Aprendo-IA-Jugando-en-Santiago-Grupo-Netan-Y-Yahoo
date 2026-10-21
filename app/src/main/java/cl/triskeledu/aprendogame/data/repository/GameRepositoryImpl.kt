@@ -1,3 +1,4 @@
+
 package cl.triskeledu.aprendogame.data.repository
 
 import androidx.room.withTransaction
@@ -9,6 +10,7 @@ import cl.triskeledu.aprendogame.model.Usuario
 import cl.triskeledu.aprendogame.model.VideoVisto
 import cl.triskeledu.aprendogame.model.VisitaRealizada
 import kotlinx.coroutines.flow.Flow
+import cl.triskeledu.aprendogame.model.Notificacion
 
 /**
  * Implementación del repositorio principal.
@@ -38,6 +40,9 @@ class GameRepositoryImpl(
     // DAO de videos vistos.
     private val videoVistoDao = database.videoVistoDao()
 
+    // DAO de notificaciones.
+    private val notificacionDao = database.notificacionDao()
+
 
     // --------------------------------------------------
     // PUNTOS TURÍSTICOS
@@ -51,20 +56,6 @@ class GameRepositoryImpl(
         id: Int
     ): PuntoInteres? {
         return puntoDao.getPuntoPorId(id)
-    }
-
-    override suspend fun marcarPuntoCompletado(
-        id: Int,
-        puntosRecompensa: Int,
-        usuarioId: Int
-    ) {
-        // Se conserva el comportamiento existente.
-        if (puntosRecompensa > 0) {
-            usuarioDao.sumarPuntos(
-                id = usuarioId,
-                puntos = puntosRecompensa
-            )
-        }
     }
 
 
@@ -85,58 +76,30 @@ class GameRepositoryImpl(
         puntosGanados: Int,
         usuarioId: Int
     ): Long {
+        require(!rutaFotoSelfie.isNullOrBlank()) { "La fotografía es obligatoria" }
+        require(puntosGanados == 100) { "La bonificación debe ser de 100 puntos" }
+        requireNotNull(capsulaId) { "La selfie debe corresponder a un QR" }
 
-        // La selfie debe tener una ruta de archivo válida.
-        require(!rutaFotoSelfie.isNullOrBlank()) {
-            "La fotografía es obligatoria"
-        }
-
-        require(puntosGanados == 100) {
-            "La bonificación de selfie debe ser de 100 puntos"
-        }
-
-        // Ejecuta la consulta, el registro y los puntos
-        // dentro de una única transacción de Room.
         return database.withTransaction {
-
-            // Comprueba si este jugador ya completó
-            // una visita al mismo punto turístico.
-            val visitaExistente =
-                visitaDao.getVisitaPorPuntoYUsuario(
-                    puntoId = puntoId,
-                    usuarioId = usuarioId
-                )
-
+            // La bonificación es por jugador y QR, NO por lugar turístico.
+            val visitaExistente = visitaDao.getVisitaPorCapsulaYUsuario(
+                capsulaId = capsulaId,
+                usuarioId = usuarioId
+            )
             if (visitaExistente?.completada == true) {
-
-                // Ya recibió la bonificación.
-                // No se registra otra visita ni se suman puntos.
                 -1L
-
             } else {
-
-                // Crea una visita con su fotografía.
-                val nuevaVisita = VisitaRealizada(
-                    id = visitaExistente?.id ?: 0,
-                    puntoId = puntoId,
-                    usuarioId = usuarioId,
-                    capsulaId = capsulaId,
-                    rutaFotoSelfie = rutaFotoSelfie,
-                    fechaTimestamp = System.currentTimeMillis(),
-                    completada = true
+                val visitaId = visitaDao.registrarVisita(
+                    VisitaRealizada(
+                        puntoId = puntoId,
+                        usuarioId = usuarioId,
+                        capsulaId = capsulaId,
+                        rutaFotoSelfie = rutaFotoSelfie,
+                        fechaTimestamp = System.currentTimeMillis(),
+                        completada = true
+                    )
                 )
-
-                // Guarda la evidencia en Room.
-                val visitaId =
-                    visitaDao.registrarVisita(nuevaVisita)
-
-                // Suma 100 puntos únicamente
-                // cuando se registra la visita.
-                usuarioDao.sumarPuntos(
-                    id = usuarioId,
-                    puntos = 100
-                )
-
+                usuarioDao.sumarPuntos(id = usuarioId, puntos = 100)
                 visitaId
             }
         }
@@ -245,6 +208,49 @@ class GameRepositoryImpl(
         return usuarioDao.getUsuario(id)
     }
 
+    // Recupera el usuario directamente desde Room.
+    override suspend fun getUsuarioDirecto(
+        id: Int
+    ): Usuario? {
+        return usuarioDao.getUsuarioDirecto(id)
+    }
+
+    // Comprueba que el correo no pertenezca a otra cuenta.
+    override suspend fun contarCorreoDeOtroUsuario(
+        correo: String,
+        usuarioId: Int
+    ): Int {
+        return usuarioDao.contarCorreoDeOtroUsuario(
+            correo = correo,
+            usuarioId = usuarioId
+        )
+    }
+
+    // Edita los datos personales del usuario en Room.
+    // Incluye la contraseña protegida mediante hash.
+    // Conserva el ID, rol, puntos y progreso del usuario.
+    override suspend fun actualizarPerfil(
+        usuarioId: Int,
+        nombre: String,
+        alias: String,
+        correo: String,
+        telefono: String,
+        direccion: String,
+        avatar: Int,
+        contrasenaHash: String
+    ): Int {
+        return usuarioDao.actualizarPerfil(
+            usuarioId = usuarioId,
+            nombre = nombre,
+            alias = alias,
+            correo = correo,
+            telefono = telefono,
+            direccion = direccion,
+            avatar = avatar,
+            contrasenaHash = contrasenaHash
+        )
+    }
+
     override suspend fun sumarPuntos(
         puntos: Int,
         usuarioId: Int
@@ -279,4 +285,59 @@ class GameRepositoryImpl(
     ): Long {
         return capsulaDao.insertarCapsula(capsula)
     }
+
+
+
+    // --------------------------------------------------
+    // NOTIFICACIONES
+    // Cliente, generador y administrador
+    // --------------------------------------------------
+
+    // Guarda una notificación en Room.
+    override suspend fun registrarNotificacion(
+        notificacion: Notificacion
+    ): Long {
+        return notificacionDao.registrarNotificacion(
+            notificacion
+        )
+    }
+
+    // Obtiene las notificaciones del usuario activo.
+    override fun getNotificacionesPorUsuario(
+        usuarioId: Int
+    ): Flow<List<Notificacion>> {
+        return notificacionDao.getNotificacionesPorUsuario(
+            usuarioId
+        )
+    }
+
+    // Cuenta las notificaciones pendientes de lectura.
+    override fun contarNotificacionesNoLeidas(
+        usuarioId: Int
+    ): Flow<Int> {
+        return notificacionDao.contarNotificacionesNoLeidas(
+            usuarioId
+        )
+    }
+
+    // Marca una notificación como leída.
+    override suspend fun marcarNotificacionLeida(
+        notificacionId: Int,
+        usuarioId: Int
+    ): Int {
+        return notificacionDao.marcarNotificacionLeida(
+            notificacionId = notificacionId,
+            usuarioId = usuarioId
+        )
+    }
+
+    // Marca todas las notificaciones del usuario como leídas.
+    override suspend fun marcarTodasComoLeidas(
+        usuarioId: Int
+    ): Int {
+        return notificacionDao.marcarTodasComoLeidas(
+            usuarioId
+        )
+    }
+
 }

@@ -17,366 +17,336 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import cl.triskeledu.aprendogame.model.VideoRegistrado
 import cl.triskeledu.aprendogame.viewmodel.GameViewModel
+import java.util.Locale
+
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
+import cl.triskeledu.aprendogame.data.local.AppDatabase
+
+private val FondoInicio = Color(0xFFF5F7FB) // Mismo fondo de SeleccionJugadorScreen
+private val AzulProfundo = Color(0xFF102747)
+private val AzulAccion = Color(0xFF246BEE)
+private val GrisTexto = Color(0xFF64748B)
 
 @Composable
 fun DashboardScreen(
     gameViewModel: GameViewModel,
     onMapaClick: () -> Unit,
     onEscanerClick: () -> Unit,
-    onColeccionClick: () -> Unit
+    onColeccionClick: () -> Unit,
+    onVideoAdicionalClick: (Int) -> Unit,
+    onVideoRegistradoClick: (VideoRegistrado) -> Unit = {},
+    onProgresoClick: () -> Unit,
+    onContenidosEducativosClick: () -> Unit
 ) {
+    // Conservamos los parámetros de video para no romper llamadas anteriores.
+    // Los videos ahora se muestran exclusivamente en ContenidosEducativosScreen.
     val usuario by gameViewModel.usuario.collectAsStateWithLifecycle()
     val historialVisitas by gameViewModel.historialVisitas.collectAsStateWithLifecycle()
     val qrDescubiertos by gameViewModel.qrDescubiertos.collectAsStateWithLifecycle()
-    val videosDescubiertos by gameViewModel.videosDescubiertos.collectAsStateWithLifecycle()
+    val capsulas by gameViewModel.capsulas.collectAsStateWithLifecycle()
+    val descubrimientos by gameViewModel.descubrimientosQr.collectAsStateWithLifecycle()
+    val videosVistos by gameViewModel.videosVistos.collectAsStateWithLifecycle()
+    val videosAdicionalesVistos by gameViewModel.videosAdicionalesVistos.collectAsStateWithLifecycle()
     val puntosTuristicos by gameViewModel.puntos.collectAsStateWithLifecycle()
 
-    val idsLugaresVisitados = historialVisitas
-        .filter { it.completada }
-        .map { it.puntoId }
-        .toSet()
+    // Accedemos a Room para consultar los videos administrativos.
+    val context = LocalContext.current
 
-    val idsLugaresDisponibles = puntosTuristicos
-        .map { it.id }
-        .toSet()
-
-    val lugaresVisitados = idsLugaresVisitados.intersect(idsLugaresDisponibles).size
-    val totalPuntosTuristicos = puntosTuristicos.size
-
-    val progreso = if (totalPuntosTuristicos > 0) {
-        (qrDescubiertos.toFloat() / totalPuntosTuristicos).coerceIn(0f, 1f)
-    } else {
-        0f
+    val database = remember(context) {
+        AppDatabase.getInstance(context.applicationContext)
     }
-    val porcentajeProgreso = (progreso * 100).toInt()
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFFF8FAFC))
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp)
-    ) {
-        Spacer(modifier = Modifier.height(8.dp))
+    val videosRegistrados by remember(database) {
+        database.videoRegistradoDao().obtenerTodos()
+    }.collectAsState(initial = emptyList())
 
-        Text(
-            text = "Bienvenido, ${usuario?.nombre ?: "Explorador"}",
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color(0xFF0F172A)
-        )
+    val contenidos by remember(database) {
+        database.contenidoEducativoDao().obtenerPublicados()
+    }.collectAsState(initial = emptyList())
 
-        Text(
-            text = "Resumen de tu progreso en Santiago",
-            fontSize = 14.sp,
-            color = Color(0xFF64748B)
-        )
+    val capsulasDisponibles = capsulas.filter {
+        it.estado == "PUBLICADA" && it.codigoQr.isNotBlank()
+    }
+    val totalQrDisponibles = capsulasDisponibles.map { it.codigoQr }.toSet().size
+    val idsCapsulasDisponibles = capsulasDisponibles.map { it.id }.toSet()
+    val qrDescubiertosDisponibles = descubrimientos.map { it.capsulaId }.toSet()
+        .intersect(idsCapsulasDisponibles).size
 
-        Spacer(modifier = Modifier.height(20.dp))
+    // QR que el jugador realmente ha descubierto.
+    val idsQrDescubiertos = descubrimientos
+        .map { it.capsulaId }
+        .toSet()
 
-        // Tarjeta Principal de Puntos
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column {
-                    Text(
-                        text = "Puntos Acumulados",
-                        fontSize = 14.sp,
-                        color = Color(0xFF94A3B8)
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "${usuario?.puntosAcumulados ?: 0} pts",
-                        fontSize = 32.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Color(0xFF38BDF8)
-                    )
+// Videos QR vistos: deben tener QR descubierto y reproducción registrada.
+    val totalVideosQr = videosVistos
+        .map { it.capsulaId }
+        .distinct()
+        .count { it in idsQrDescubiertos }
+
+// Videos independientes vistos.
+    val totalVideosIndependientes = videosAdicionalesVistos
+        .map { it.videoAdicionalId }
+        .distinct()
+        .count { identificador ->
+
+            when {
+                // Videos originales sin QR.
+                identificador == 1 || identificador == 2 -> true
+
+                // Videos creados por el administrador.
+                identificador < 0 -> {
+                    val video = videosRegistrados.firstOrNull {
+                        it.id == -identificador
+                    }
+
+                    if (video == null) {
+                        false
+                    } else {
+                        val contenido = contenidos.firstOrNull {
+                            it.id == video.contenidoId
+                        }
+
+                        // Verificamos si el video tiene un QR asociado.
+                        val tieneQr = contenido != null && capsulas.any {
+                            it.codigoQr.startsWith(
+                                "TRISKELEDU-CONTENIDO-${contenido.id}-"
+                            )
+                        }
+
+                        !tieneQr
+                    }
                 }
 
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = Color(0x2238BDF8),
-                    modifier = Modifier.size(54.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Default.Stars,
-                            contentDescription = null,
-                            tint = Color(0xFF38BDF8),
-                            modifier = Modifier.size(32.dp)
-                        )
+                else -> false
+            }
+        }
+
+// Total de videos que cumplen las reglas.
+    val totalVideosVistos = totalVideosQr + totalVideosIndependientes
+
+    val idsLugaresDisponibles = puntosTuristicos.map { it.id }.toSet()
+    val lugaresVisitados = historialVisitas.filter { it.completada }
+        .map { it.puntoId }.toSet().intersect(idsLugaresDisponibles).size
+    val progreso = if (totalQrDisponibles > 0) {
+        (qrDescubiertosDisponibles.toFloat() / totalQrDisponibles).coerceIn(0f, 1f)
+    } else 0f
+    val porcentajeProgreso = String.format(Locale.US, "%.2f", progreso * 100)
+        .replace(".", ",")
+
+    Column(
+        modifier = Modifier.fillMaxSize()
+            .background(FondoInicio)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp, vertical = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text(
+                text = "¡Hola, ${usuario?.nombre ?: "Explorador"}! 👋",
+                fontSize = 26.sp, fontWeight = FontWeight.ExtraBold,
+                color = AzulProfundo
+            )
+            Text(
+                text = "Tu aventura por Santiago continúa aquí.",
+                fontSize = 14.sp, color = GrisTexto
+            )
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onProgresoClick),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = AzulProfundo),
+            elevation = CardDefaults.cardElevation(defaultElevation = 5.dp)
+        ) {
+            Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("TUS PUNTOS", color = Color(0xFFB8D2FF),
+                            fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.height(5.dp))
+                        Text("${usuario?.puntosAcumulados ?: 0} pts",
+                            color = Color.White, fontSize = 34.sp,
+                            fontWeight = FontWeight.ExtraBold)
                     }
+                    Surface(shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFF27466E)) {
+                        Icon(Icons.Default.Stars, contentDescription = null,
+                            tint = Color(0xFFFFD166),
+                            modifier = Modifier.padding(13.dp).size(32.dp))
+                    }
+                }
+                HorizontalDivider(color = Color(0xFF355271))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Meta: 10.000 puntos", color = Color(0xFFD9E7FF),
+                        fontSize = 12.sp, modifier = Modifier.weight(1f))
+                    Text("Ver progreso  →", color = Color(0xFF93C5FD),
+                        fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Indicadores métricos limpios
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            TarjetaMetrica(
-                valor = qrDescubiertos.toString(),
-                etiqueta = "QR escaneados",
-                icono = Icons.Default.QrCodeScanner,
-                colorIcono = Color(0xFF2563EB),
-                modifier = Modifier.weight(1f)
-            )
-
-            TarjetaMetrica(
-                valor = videosDescubiertos.toString(),
-                etiqueta = "Cápsulas IA",
-                icono = Icons.Default.PlayCircle,
-                colorIcono = Color(0xFF7C3AED),
-                modifier = Modifier.weight(1f)
-            )
-
-            TarjetaMetrica(
-                valor = lugaresVisitados.toString(),
-                etiqueta = "Lugares",
-                icono = Icons.Default.LocationOn,
-                colorIcono = Color(0xFF059669),
-                modifier = Modifier.weight(1f)
-            )
+        Row(horizontalArrangement = Arrangement.spacedBy(9.dp),
+            modifier = Modifier.fillMaxWidth()) {
+            IndicadorDashboard("${qrDescubiertos}", "QR escaneados",
+                Icons.Default.QrCodeScanner, AzulAccion, Modifier.weight(1f))
+            IndicadorDashboard("$totalVideosVistos", "Videos vistos",
+                Icons.Default.PlayCircle, Color(0xFF8054DA), Modifier.weight(1f))
+            IndicadorDashboard("$lugaresVisitados", "Lugares",
+                Icons.Default.Place, Color(0xFF159F79), Modifier.weight(1f))
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // Progreso de exploración
-        Text(
-            text = "Avance de Exploración",
-            fontSize = 17.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color(0xFF0F172A)
-        )
-
-        Spacer(modifier = Modifier.height(10.dp))
-
+        TituloDashboard("Tu exploración")
         Card(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White)
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "$qrDescubiertos de $totalPuntosTuristicos puntos descubiertos",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color(0xFF334155)
-                    )
-                    Text(
-                        text = "$porcentajeProgreso%",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2563EB)
-                    )
+            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("QR descubiertos", color = AzulProfundo,
+                        fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
+                        modifier = Modifier.weight(1f))
+                    Text("$qrDescubiertosDisponibles / $totalQrDisponibles",
+                        color = AzulAccion, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
                 LinearProgressIndicator(
                     progress = { progreso },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(8.dp),
-                    color = Color(0xFF2563EB),
-                    trackColor = Color(0xFFE2E8F0)
+                    modifier = Modifier.fillMaxWidth().height(9.dp),
+                    color = AzulAccion, trackColor = Color(0xFFE5ECF7)
+                )
+                Text(
+                    text = when {
+                        totalQrDisponibles == 0 -> "Todavía no hay códigos QR disponibles."
+                        qrDescubiertosDisponibles == totalQrDisponibles -> "¡Exploración completada! Descubriste todos los QR."
+                        else -> "Has completado el $porcentajeProgreso% de los QR. ¡Sigue explorando!"
+                    },
+                    color = GrisTexto, fontSize = 12.sp
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        TituloDashboard("Accesos rápidos")
+        Row(modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            AccesoDashboard("Mapa", Icons.Default.Map, onMapaClick, Modifier.weight(1f))
+            AccesoDashboard("Escanear QR", Icons.Default.QrCodeScanner,
+                onEscanerClick, Modifier.weight(1f))
+            AccesoDashboard("Colección", Icons.AutoMirrored.Filled.MenuBook,
+                onColeccionClick, Modifier.weight(1f))
+        }
 
-        // Desafío activo
-        Text(
-            text = "Punto Recomendado",
-            fontSize = 17.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color(0xFF0F172A)
-        )
-
-        Spacer(modifier = Modifier.height(10.dp))
-
+        TituloDashboard("Aprende y descubre")
         Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFEFF6FF)),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            modifier = Modifier.fillMaxWidth()
+                .clickable(onClick = onContenidosEducativosClick),
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF1B3966)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
         ) {
-            Row(
-                modifier = Modifier.padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = Color(0xFFDBEAFE),
-                    modifier = Modifier.size(46.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Default.Place,
-                            contentDescription = null,
-                            tint = Color(0xFF2563EB)
-                        )
-                    }
+            Row(modifier = Modifier.padding(18.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                Surface(shape = RoundedCornerShape(16.dp),
+                    color = Color(0xFF335782)) {
+                    Icon(Icons.Default.SmartDisplay, contentDescription = null,
+                        tint = Color(0xFFB9D7FF),
+                        modifier = Modifier.padding(13.dp).size(31.dp))
                 }
-
-                Spacer(modifier = Modifier.width(14.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Plaza de Armas",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF1E3A8A)
-                    )
-                    Text(
-                        text = "Visita este punto turístico para escanear su código QR.",
-                        fontSize = 12.sp,
-                        color = Color(0xFF475569)
-                    )
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text("Contenidos Educativos", color = Color.White,
+                        fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                    Text("Videos nuevos, vistos y desbloqueados por QR",
+                        color = Color(0xFFD5E4F9), fontSize = 12.sp,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
+                Icon(Icons.Default.ChevronRight, contentDescription = "Abrir contenidos",
+                    tint = Color.White)
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // Accesos directos sobrios
-        Text(
-            text = "Accesos Rápidos",
-            fontSize = 17.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color(0xFF0F172A)
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            BotonAccesoRapido(
-                titulo = "Ver Mapa",
-                icono = Icons.Default.Map,
-                onClick = onMapaClick,
-                modifier = Modifier.weight(1f)
-            )
-
-            BotonAccesoRapido(
-                titulo = "Escanear QR",
-                icono = Icons.Default.QrCodeScanner,
-                onClick = onEscanerClick,
-                modifier = Modifier.weight(1f)
-            )
-
-            BotonAccesoRapido(
-                titulo = "Cápsulas",
-                icono = Icons.AutoMirrored.Filled.MenuBook,
-                onClick = onColeccionClick,
-                modifier = Modifier.weight(1f)
-            )
+        TituloDashboard("Punto recomendado")
+        Card(shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFE7EFFD)),
+            modifier = Modifier.fillMaxWidth()) {
+            Row(modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(13.dp)) {
+                Surface(shape = RoundedCornerShape(13.dp),
+                    color = Color(0xFFD2E3FC)) {
+                    Icon(Icons.Default.LocationOn, contentDescription = null,
+                        tint = AzulAccion,
+                        modifier = Modifier.padding(12.dp).size(25.dp))
+                }
+                Column {
+                    Text("Plaza de Armas", color = AzulProfundo,
+                        fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Spacer(Modifier.height(4.dp))
+                    Text("Explora este lugar y descubre sus códigos QR.",
+                        color = Color(0xFF50627B), fontSize = 12.sp)
+                }
+            }
         }
+        Spacer(Modifier.height(8.dp))
     }
 }
 
 @Composable
-private fun TarjetaMetrica(
+private fun TituloDashboard(titulo: String) {
+    Text(titulo, color = AzulProfundo, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+}
+
+@Composable
+private fun IndicadorDashboard(
     valor: String,
     etiqueta: String,
     icono: ImageVector,
     colorIcono: Color,
     modifier: Modifier = Modifier
 ) {
-    Card(
-        modifier = modifier.height(100.dp),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.Center
-        ) {
-            Icon(
-                imageVector = icono,
-                contentDescription = null,
-                tint = colorIcono,
-                modifier = Modifier.size(22.dp)
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = valor,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF0F172A)
-            )
-            Text(
-                text = etiqueta,
-                fontSize = 11.sp,
-                color = Color(0xFF64748B)
-            )
+    Card(modifier = modifier.height(110.dp),
+        shape = RoundedCornerShape(17.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White)) {
+        Column(Modifier.fillMaxSize().padding(11.dp),
+            verticalArrangement = Arrangement.Center) {
+            Icon(icono, contentDescription = null, tint = colorIcono,
+                modifier = Modifier.size(23.dp))
+            Spacer(Modifier.height(8.dp))
+            Text(valor, color = AzulProfundo, fontSize = 20.sp,
+                fontWeight = FontWeight.ExtraBold)
+            Text(etiqueta, color = GrisTexto, fontSize = 10.sp,
+                lineHeight = 13.sp, maxLines = 2)
         }
     }
 }
 
 @Composable
-private fun BotonAccesoRapido(
+private fun AccesoDashboard(
     titulo: String,
     icono: ImageVector,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Card(
-        modifier = modifier
-            .height(84.dp)
-            .clickable { onClick() },
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(10.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Icon(
-                imageVector = icono,
-                contentDescription = null,
-                tint = Color(0xFF2563EB),
-                modifier = Modifier.size(24.dp)
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = titulo,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color(0xFF1E293B)
-            )
+    Card(modifier = modifier.height(92.dp).clickable(onClick = onClick),
+        shape = RoundedCornerShape(17.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White)) {
+        Column(Modifier.fillMaxSize().padding(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center) {
+            Icon(icono, contentDescription = null, tint = AzulAccion,
+                modifier = Modifier.size(27.dp))
+            Spacer(Modifier.height(8.dp))
+            Text(titulo, color = AzulProfundo, fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold, maxLines = 2)
         }
     }
 }
+
+

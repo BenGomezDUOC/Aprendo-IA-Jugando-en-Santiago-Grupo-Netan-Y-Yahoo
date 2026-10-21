@@ -1,360 +1,296 @@
-
 package cl.triskeledu.aprendogame.ui.screens
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.ArrowForwardIos
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.QrCode2
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-
 import cl.triskeledu.aprendogame.R
+import cl.triskeledu.aprendogame.data.local.AppDatabase
 import cl.triskeledu.aprendogame.model.Usuario
-
 import kotlinx.coroutines.flow.Flow
 
-import androidx.compose.ui.platform.LocalContext
-import cl.triskeledu.aprendogame.data.local.AppDatabase
+private val AzulFondo = Color(0xFF081B31)
+private val AzulTarjeta = Color(0xFF173858)
+private val AzulBoton = Color(0xFF2563EB)
+private val Celeste = Color(0xFF38BDF8)
 
-/**
- * Pantalla 3: Selección de jugador.
- *
- * Muestra las cuentas registradas en Room:
- * - Avatar del usuario.
- * - Nombre.
- * - Puntos acumulados.
- *
- * Permite seleccionar una cuenta e ingresar su contraseña.
- */
 @Composable
 fun SeleccionJugadorScreen(
     jugadoresFlow: Flow<List<Usuario>>,
-    onIniciarSesion: (Usuario, String) -> Unit,
+    onIniciarSesion: (Usuario, String, (Boolean) -> Unit) -> Unit,
     onCrearJugador: () -> Unit
 ) {
-
-    // Accede a la base de datos Room.
     val context = LocalContext.current
-
+    // Objetos de base de datos: remember, NO rememberSaveable.
     val database = remember(context) {
         AppDatabase.getInstance(context.applicationContext)
     }
+    val jugadores by jugadoresFlow.collectAsState(initial = emptyList())
 
-    // Observa los usuarios almacenados en Room.
-    val jugadores by jugadoresFlow.collectAsState(
-        initial = emptyList()
-    )
+    var jugadorSeleccionadoId by rememberSaveable { mutableStateOf<Int?>(null) }
+    var mostrarDialogo by rememberSaveable { mutableStateOf(false) }
+    // No persistimos contraseñas en el estado restaurable.
+    var contrasenaIngresada by remember { mutableStateOf("") }
+    var mostrarContrasena by rememberSaveable { mutableStateOf(false) }
+    var errorContrasena by remember { mutableStateOf("") }
+    var verificando by remember { mutableStateOf(false) }
+    val jugadorSeleccionado = jugadores.find { it.id == jugadorSeleccionadoId }
 
-    // Conserva el ID del usuario seleccionado.
-    var jugadorSeleccionadoId by rememberSaveable {
-        mutableStateOf<Int?>(null)
-    }
-
-    // Controla la ventana para ingresar la contraseña.
-    var mostrarDialogo by rememberSaveable {
-        mutableStateOf(false)
-    }
-
-    // La contraseña no se guarda en el estado restaurable.
-    var contrasenaIngresada by remember {
-        mutableStateOf("")
-    }
-
-    // Recupera el usuario seleccionado.
-    val jugadorSeleccionado = jugadores.find {
-        it.id == jugadorSeleccionadoId
-    }
-
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFF5F7FB))
-            .padding(20.dp)
-    ) {
-
-        Text(
-            text = "Selecciona tu jugador",
-            fontSize = 26.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color(0xFF102747)
-        )
-
-        Spacer(
-            modifier = Modifier.height(20.dp)
-        )
-
-        LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.fillMaxSize()
-        ) {
-
-            // Tarjetas de los jugadores registrados.
-            items(
-                items = jugadores,
-                key = { jugador -> jugador.id }
-            ) { jugador ->
-
-                // Observa cuántos QR ha descubierto este jugador.
-                val qrDescubiertosFlow = remember(jugador.id) {
-                    database.descubrimientoQrDao()
-                        .contarQrDescubiertos(jugador.id)
-                }
-
-                val qrDescubiertos by qrDescubiertosFlow.collectAsState(
-                    initial = 0
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color(0xFF102D4B), AzulFondo, Color(0xFF06101E))
                 )
-
-                // Selecciona el recurso según el avatar
-                // que tiene guardado este usuario en Room.
-                val imagenAvatar = when (jugador.avatar) {
-                    1 -> R.drawable.avatar1
-                    2 -> R.drawable.avatar2
-                    3 -> R.drawable.avatar3
-                    else -> R.drawable.avatar1
-                }
-
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-
-                            jugadorSeleccionadoId = jugador.id
-
-                            // Limpia la contraseña anterior.
-                            contrasenaIngresada = ""
-
-                            mostrarDialogo = true
-                        },
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color.White
-                    ),
-                    elevation = CardDefaults.cardElevation(
-                        defaultElevation = 3.dp
+            )
+    ) {
+        // Detalles luminosos sin necesitar imágenes ni recursos nuevos.
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .size(210.dp)
+                .background(
+                    Brush.radialGradient(
+                        listOf(Color(0x332CA9E8), Color.Transparent)
                     )
-                ) {
+                )
+        )
 
-                    Row(
+        Column(modifier = Modifier.fillMaxSize()) {
+            Column(modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 32.dp, bottom = 20.dp)) {
+                Text(
+                    text = "¿Quién va a explorar?",
+                    color = Color.White,
+                    fontSize = 27.sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Selecciona tu jugador",
+                    color = Celeste,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Continúa tu aventura por Santiago y descubre nuevos desafíos.",
+                    color = Color(0xFFB7C9DC),
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp
+                )
+            }
+
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 18.dp, end = 18.dp, bottom = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(13.dp)
+            ) {
+                items(items = jugadores, key = { it.id }) { jugador ->
+                    val qrFlow = remember(jugador.id) {
+                        database.descubrimientoQrDao().contarQrDescubiertos(jugador.id)
+                    }
+                    val qrDescubiertos by qrFlow.collectAsState(initial = 0)
+                    val imagenAvatar = when (jugador.avatar) {
+                        1 -> R.drawable.avatar1
+                        2 -> R.drawable.avatar2
+                        3 -> R.drawable.avatar3
+                        else -> R.drawable.avatar1
+                    }
+                    Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .clickable {
+                                jugadorSeleccionadoId = jugador.id
+                                contrasenaIngresada = ""
+                                errorContrasena = ""
+                                verificando = false
+                                mostrarContrasena = false
+                                mostrarDialogo = true
+                            },
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = AzulTarjeta.copy(alpha = 0.94f)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                     ) {
-
-                        // Muestra el avatar guardado del jugador.
-                        Image(
-                            painter = painterResource(
-                                id = imagenAvatar
-                            ),
-                            contentDescription = "Avatar de ${jugador.nombre}",
-                            modifier = Modifier.size(48.dp),
-                            contentScale = ContentScale.Fit
-                        )
-
-                        Spacer(
-                            modifier = Modifier.size(14.dp)
-                        )
-
-                        Column(
-                            modifier = Modifier.weight(1f)
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-
-                            Text(
-                                text = jugador.nombre,
-                                fontSize = 17.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF102747)
-                            )
-
-                            Text(
-                                text = "${jugador.puntosAcumulados} puntos",
-                                fontSize = 14.sp,
-                                color = Color.Gray
-                            )
-
-                            // Pendiente de conectar con el conteo
-                            // de QR descubiertos por usuario.
-                            Text(
-                                text = "QR encontrados: $qrDescubiertos",
-                                fontSize = 12.sp,
-                                color = Color.Gray
-                            )
-                        }
-
-                        // Marca visualmente el jugador seleccionado.
-                        if (jugadorSeleccionadoId == jugador.id) {
-
-                            Text(
-                                text = "✓",
-                                fontSize = 22.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF246BEE)
+                            Box(
+                                modifier = Modifier
+                                    .size(58.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF28567B)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Image(
+                                    painter = painterResource(imagenAvatar),
+                                    contentDescription = "Avatar de ${jugador.nombre}",
+                                    modifier = Modifier.size(53.dp),
+                                    contentScale = ContentScale.Fit
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(14.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = jugador.nombre,
+                                    color = Color.White,
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.height(5.dp))
+                                Text(
+                                    text = "★ ${jugador.puntosAcumulados} puntos",
+                                    color = Color(0xFFFFD47B),
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Spacer(modifier = Modifier.height(5.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.QrCode2, null, tint = Celeste, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Text(
+                                        text = "$qrDescubiertos QR descubiertos",
+                                        color = Color(0xFFC7D8E9),
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
+                            Icon(
+                                imageVector = Icons.Default.ArrowForwardIos,
+                                contentDescription = "Seleccionar jugador",
+                                tint = Celeste,
+                                modifier = Modifier.size(17.dp)
                             )
                         }
                     }
                 }
-            }
-
-            // Tarjeta para registrar un jugador nuevo.
-            item {
-
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            onCrearJugador()
-                        },
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color.White
-                    ),
-                    elevation = CardDefaults.cardElevation(
-                        defaultElevation = 3.dp
-                    )
-                ) {
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(20.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                item {
+                    Spacer(modifier = Modifier.height(5.dp))
+                    Button(
+                        onClick = onCrearJugador,
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        shape = RoundedCornerShape(15.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = AzulBoton)
                     ) {
-
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "Crear jugador",
-                            tint = Color(0xFF246BEE),
-                            modifier = Modifier.size(28.dp)
-                        )
-
-                        Spacer(
-                            modifier = Modifier.size(14.dp)
-                        )
-
-                        Text(
-                            text = "Crear nuevo jugador",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = Color(0xFF102747)
-                        )
+                        Icon(Icons.Default.Add, contentDescription = null)
+                        Spacer(modifier = Modifier.width(9.dp))
+                        Text("Crear nuevo jugador", fontWeight = FontWeight.Bold)
                     }
                 }
             }
         }
     }
 
-    // --------------------------------------------------
-    // VENTANA PARA INTRODUCIR LA CONTRASEÑA
-    // --------------------------------------------------
-
     if (mostrarDialogo && jugadorSeleccionado != null) {
-
         AlertDialog(
             onDismissRequest = {
-                mostrarDialogo = false
+                if (!verificando) mostrarDialogo = false
                 contrasenaIngresada = ""
+                errorContrasena = ""
             },
-
-            title = {
-                Text("Iniciar sesión")
-            },
-
+            containerColor = Color(0xFF102B48),
+            titleContentColor = Color.White,
+            textContentColor = Color(0xFFDBEAFE),
+            title = { Text("Iniciar sesión", fontWeight = FontWeight.Bold) },
             text = {
-
                 Column {
-
-                    Text(
-                        text = "Jugador: ${jugadorSeleccionado.nombre}"
-                    )
-
-                    Spacer(
-                        modifier = Modifier.height(12.dp)
-                    )
-
+                    Text("Jugador: ${jugadorSeleccionado.nombre}")
+                    Spacer(modifier = Modifier.height(15.dp))
                     OutlinedTextField(
                         value = contrasenaIngresada,
                         onValueChange = {
                             contrasenaIngresada = it
+                            errorContrasena = ""
                         },
-                        label = {
-                            Text("Contraseña")
+                        label = { Text("Contraseña") },
+                        leadingIcon = { Icon(Icons.Default.Lock, null) },
+                        trailingIcon = {
+                            IconButton(onClick = { mostrarContrasena = !mostrarContrasena }) {
+                                Icon(
+                                    if (mostrarContrasena) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                    contentDescription = if (mostrarContrasena) "Ocultar contraseña" else "Mostrar contraseña"
+                                )
+                            }
                         },
-                        visualTransformation =
-                            PasswordVisualTransformation(),
+                        visualTransformation = if (mostrarContrasena) VisualTransformation.None else PasswordVisualTransformation(),
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                        isError = errorContrasena.isNotEmpty(),
+                        supportingText = if (errorContrasena.isNotEmpty()) {
+                            { Text(errorContrasena, color = Color(0xFFFFA6A6)) }
+                        } else null,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedLabelColor = Celeste,
+                            unfocusedLabelColor = Color(0xFFBED0E2),
+                            focusedBorderColor = Celeste,
+                            unfocusedBorderColor = Color(0xFF69839D)
+                        )
                     )
                 }
             },
-
             confirmButton = {
-
                 Button(
                     onClick = {
-                        val pass = contrasenaIngresada
-                        mostrarDialogo = false
-                        contrasenaIngresada = ""
-                        // AppNavigation verifica la contraseña.
-                        onIniciarSesion(
-                            jugadorSeleccionado,
-                            pass
-                        )
+                        if (contrasenaIngresada.isBlank()) {
+                            errorContrasena = "Ingresa tu contraseña."
+                        } else {
+                            verificando = true
+                            // AppNavigation verifica el hash y devuelve el resultado.
+                            onIniciarSesion(jugadorSeleccionado, contrasenaIngresada) { correcta ->
+                                verificando = false
+                                if (correcta) {
+                                    mostrarDialogo = false
+                                    contrasenaIngresada = ""
+                                    errorContrasena = ""
+                                } else {
+                                    errorContrasena = "Contraseña incorrecta. Inténtalo nuevamente."
+                                }
+                            }
+                        }
                     },
-                    enabled = contrasenaIngresada.isNotBlank()
-                ) {
-                    Text("Ingresar")
-                }
+                    enabled = !verificando,
+                    colors = ButtonDefaults.buttonColors(containerColor = AzulBoton)
+                ) { Text(if (verificando) "Verificando..." else "Ingresar") }
             },
-
             dismissButton = {
-
-                TextButton(
-                    onClick = {
-                        mostrarDialogo = false
-                        contrasenaIngresada = ""
-                    }
-                ) {
-                    Text("Cancelar")
-                }
+                TextButton(onClick = {
+                    if (!verificando) mostrarDialogo = false
+                    contrasenaIngresada = ""
+                    errorContrasena = ""
+                }) { Text("Cancelar", color = Celeste) }
             }
         )
     }
 }
+
+

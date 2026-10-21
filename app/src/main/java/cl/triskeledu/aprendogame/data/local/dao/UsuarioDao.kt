@@ -51,9 +51,22 @@ interface UsuarioDao {
     @Query("SELECT * FROM usuarios WHERE correo = :correo LIMIT 1")
     suspend fun buscarPorCorreo(correo: String): Usuario?
 
+    // NUEVO: busca una cuenta predefinida por su identificador.
+    // No depende del correo, nombre ni rol.
+    @Query("""
+        SELECT * FROM usuarios
+        WHERE tipoCuentaSistema = :tipo
+        LIMIT 1
+    """)
+    suspend fun buscarCuentaSistema(tipo: String): Usuario?
+
     // Obtiene todas las cuentas, independientemente del rol.
     @Query("SELECT * FROM usuarios ORDER BY nombre ASC")
     fun obtenerTodosLosUsuarios(): Flow<List<Usuario>>
+
+    // Elimina un usuario por su correo.
+    @Query("DELETE FROM usuarios WHERE correo = :correo")
+    suspend fun eliminarPorCorreo(correo: String)
 
     // Elimina exclusivamente la cuenta inicial de demostración.
     // Devuelve la cantidad de registros eliminados.
@@ -65,6 +78,61 @@ interface UsuarioDao {
           AND contrasena = ''
     """)
     suspend fun eliminarUsuarioInicial(): Int
+
+    // Actualiza los datos de una cuenta predefinida
+    // sin eliminar al usuario ni su progreso.
+    @Query("""
+        UPDATE usuarios
+        SET nombre = :nombre,
+            alias = :alias,
+            contrasena = :contrasena,
+            rol = :rol
+        WHERE id = :id
+    """)
+    suspend fun actualizarCuentaPredefinida(
+        id: Int,
+        nombre: String,
+        alias: String,
+        contrasena: String,
+        rol: String
+    )
+
+    // Edita los datos personales del usuario.
+    // Conserva su ID, rol, puntos y progreso.
+    @Query("""
+        UPDATE usuarios
+        SET nombre = :nombre,
+            alias = :alias,
+            correo = :correo,
+            telefono = :telefono,
+            direccion = :direccion,
+            avatar = :avatar,
+            contrasena = :contrasenaHash
+        WHERE id = :usuarioId
+    """)
+    suspend fun actualizarPerfil(
+        usuarioId: Int,
+        nombre: String,
+        alias: String,
+        correo: String,
+        telefono: String,
+        direccion: String,
+        avatar: Int,
+        contrasenaHash: String
+    ): Int
+
+    // Comprueba si otro usuario ya utiliza el correo.
+    // Excluye al usuario que está editando su perfil.
+    @Query("""
+        SELECT COUNT(*) FROM usuarios
+        WHERE correo = :correo
+          AND id != :usuarioId
+    """)
+    suspend fun contarCorreoDeOtroUsuario(
+        correo: String,
+        usuarioId: Int
+    ): Int
 }
+
 
 

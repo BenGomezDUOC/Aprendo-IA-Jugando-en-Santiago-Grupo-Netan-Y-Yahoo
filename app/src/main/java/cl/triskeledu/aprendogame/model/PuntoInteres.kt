@@ -17,5 +17,6 @@ data class PuntoInteres(
     val longitud: Double,
     val altitud: Double,
     val completado: Boolean = false,
-    val radioToleranciaMetros: Double = 50.0
+    val radioToleranciaMetros: Double = 50.0,
+    val imagenUri: String? = null
 )

@@ -1,3 +1,4 @@
+
 package cl.triskeledu.aprendogame.data.local
 
 import cl.triskeledu.aprendogame.model.Capsula
@@ -7,14 +8,20 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
- * Proveedor de datos precargados (Data Seeding) para cumplir con el requerimiento
- * de operación autónoma y 100% offline desde el primer segundo.
+ * Carga los puntos turísticos y cápsulas iniciales.
+ *
+ * Los datos se insertan solamente si no existen.
+ * No sobrescribe los cambios realizados por el Administrador.
+ * Conserva los códigos QR y el progreso de los jugadores.
  */
 object DatabaseSeeder {
 
     fun seedDatabase(database: AppDatabase) {
+
         CoroutineScope(Dispatchers.IO).launch {
-            // 1. Poblar Puntos Turísticos de Santiago
+
+            // 1. PUNTOS TURÍSTICOS INICIALES
+
             val puntos = listOf(
                 PuntoInteres(
                     id = 1,
@@ -77,67 +84,76 @@ object DatabaseSeeder {
                     radioToleranciaMetros = 60.0
                 )
             )
-            database.puntoInteresDao().insertarPuntosIniciales(puntos)
 
-            // 2. Poblar Cápsulas Educativas sobre Inteligencia Artificial asociadas a cada QR
+            database.puntoInteresDao()
+                .insertarPuntosIniciales(puntos)
+
+            // 2. CÁPSULAS EDUCATIVAS INICIALES
+
             val capsulas = listOf(
                 Capsula(
                     id = 1,
                     puntoId = 1,
-                    titulo = "IA en la Historia Urbana",
+                    titulo = "¿Qué es la Inteligencia Artificial?",
                     codigoQr = "QR_PLAZA_ARMAS",
-                    urlVideo = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-                    puntos = 100,
-                    descripcion = "Cómo los algoritmos de visión por computadora reconstruyen archivos históricos de la ciudad."
+                    urlVideo = "",
+                    puntos = 10,
+                    descripcion = "Autor: Magdiel Reynoso. Aprende qué es la inteligencia artificial, cómo reconoce imágenes, comprende preguntas y ayuda a estudiar la historia de Santiago."
                 ),
                 Capsula(
                     id = 2,
                     puntoId = 2,
-                    titulo = "Visión Artificial y Topografía",
+                    titulo = "Reconocimiento de imágenes",
                     codigoQr = "QR_SANTA_LUCIA",
-                    urlVideo = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-                    puntos = 150,
-                    descripcion = "Reconocimiento de patrones del terreno mediante modelos de satélite y redes convolucionales."
+                    urlVideo = "",
+                    puntos = 10,
+                    descripcion = "Autor: Fernando Zapata. Descubre cómo la visión artificial reconoce objetos, plantas y monumentos mediante patrones aprendidos de imágenes."
                 ),
                 Capsula(
                     id = 3,
                     puntoId = 3,
-                    titulo = "Redes Neuronales y Panorámicas",
+                    titulo = "IA y medioambiente",
                     codigoQr = "QR_SAN_CRISTOBAL",
-                    urlVideo = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-                    puntos = 200,
-                    descripcion = "Monitoreo de calidad del aire y sensores urbanos inteligentes usando Deep Learning."
+                    urlVideo = "",
+                    puntos = 10,
+                    descripcion = "Autor: Juan Pablo Taulis. Conoce cómo la inteligencia artificial analiza datos ambientales, estudia la calidad del aire y ayuda a proteger la naturaleza."
                 ),
                 Capsula(
                     id = 4,
                     puntoId = 4,
-                    titulo = "Gobernanza y Ética en IA",
+                    titulo = "Aprendizaje automático",
                     codigoQr = "QR_LA_MONEDA",
-                    urlVideo = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
-                    puntos = 100,
-                    descripcion = "Políticas públicas, sesgo algorítmico y transparencia para una ciudadanía digital protegida."
+                    urlVideo = "",
+                    puntos = 10,
+                    descripcion = "Autor: Benjamín Gómez. Aprende qué es el machine learning y cómo los modelos utilizan datos para identificar patrones y realizar predicciones."
                 ),
                 Capsula(
                     id = 5,
                     puntoId = 5,
-                    titulo = "IA y Sustentabilidad Ambiental",
+                    titulo = "Redes neuronales",
                     codigoQr = "QR_PARQUE_FORESTAL",
-                    urlVideo = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
-                    puntos = 120,
-                    descripcion = "Optimización del riego urbano y biodiversidad mediante gemelos digitales e IA."
+                    urlVideo = "",
+                    puntos = 10,
+                    descripcion = "Autor: Juan Pablo Taulis. Descubre cómo funcionan las redes neuronales artificiales y cómo pueden reconocer plantas, voces y otros patrones."
                 ),
                 Capsula(
                     id = 6,
                     puntoId = 6,
-                    titulo = "Creatividad e IA Generativa",
+                    titulo = "Inteligencia Artificial generativa",
                     codigoQr = "QR_BELLAVISTA",
-                    urlVideo = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoy.mp4",
-                    puntos = 130,
-                    descripcion = "Exploración del arte interactivo, música y síntesis multimedia con Transformers."
+                    urlVideo = "",
+                    puntos = 10,
+                    descripcion = "Autor: Fernando Zapata. Aprende cómo la IA generativa puede crear textos, imágenes y sonidos, y por qué debemos utilizarla responsablemente."
                 )
             )
-            database.capsulaDao().insertarCapsulasIniciales(capsulas)
 
+            // IGNORE evita reemplazar las cápsulas existentes.
+            database.capsulaDao()
+                .insertarCapsulasIniciales(capsulas)
+
+            // IMPORTANTE:
+            // No actualizar aquí las cápsulas existentes.
+            // Sus datos ahora pueden ser modificados por el Administrador.
         }
     }
 }

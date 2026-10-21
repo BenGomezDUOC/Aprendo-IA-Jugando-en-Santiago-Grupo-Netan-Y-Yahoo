@@ -6,22 +6,19 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
-import android.graphics.RectF
 import android.graphics.drawable.BitmapDrawable
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MyLocation
-import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,7 +27,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -48,12 +44,17 @@ import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 @Composable
 fun MapaScreen(
     viewModel: GameViewModel = viewModel(),
-    onEscanearQrClick: (PuntoInteres) -> Unit = {}
+    onVerDetallesClick: (PuntoInteres) -> Unit = {},
+    onVolverClick: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val puntos by viewModel.puntos.collectAsStateWithLifecycle()
     val ubicacionActual by viewModel.ubicacionActual.collectAsStateWithLifecycle()
     val puntoSeleccionado by viewModel.puntoSeleccionado.collectAsStateWithLifecycle()
+
+    // Cápsulas educativas registradas en Room.
+    val capsulas by viewModel.capsulas.collectAsStateWithLifecycle()
+
 
     var tienePermisoUbicacion by remember {
         mutableStateOf(
@@ -187,7 +188,16 @@ fun MapaScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Column {
+                if (onVolverClick != null) {
+                    IconButton(onClick = onVolverClick) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Volver a la pantalla principal",
+                            tint = Color.White
+                        )
+                    }
+                }
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = "Santiago Turístico IA",
                         style = MaterialTheme.typography.titleMedium,
@@ -196,7 +206,7 @@ fun MapaScreen(
                     )
                     val completados = puntos.count { it.completado }
                     Text(
-                        text = "$completados de ${puntos.size} puntos completados",
+                        text = "${puntos.size} lugares turísticos",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color(0xFF38BDF8)
                     )
@@ -241,6 +251,13 @@ fun MapaScreen(
             puntoSeleccionado?.let { punto ->
                 val distancia = viewModel.calcularDistanciaMetros(punto)
 
+                // Cuenta todos los QR publicados del lugar, no solo la primera cápsula.
+                val qrDisponibles = capsulas.count { capsula ->
+                    capsula.puntoId == punto.id &&
+                            capsula.codigoQr.isNotBlank() &&
+                            capsula.estado.equals("PUBLICADA", ignoreCase = true)
+                }
+
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp),
@@ -267,65 +284,35 @@ fun MapaScreen(
                         Spacer(modifier = Modifier.height(6.dp))
 
                         Text(
-                            text = punto.descripcion,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Color(0xFFCBD5E1)
+                            text = if (qrDisponibles == 1) "1 QR disponible" else "$qrDisponibles QR disponibles",
+                            color = Color(0xFF4ADE80),
+                            fontWeight = FontWeight.SemiBold
                         )
 
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = if (punto.completado) Icons.Default.CheckCircle else Icons.Default.LocationOn,
-                                contentDescription = null,
-                                tint = if (punto.completado) Color(0xFF4ADE80) else Color(0xFFFBBF24),
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = if (punto.completado) "Completado" else "Pendiente de visita",
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = if (punto.completado) Color(0xFF4ADE80) else Color(0xFFFBBF24)
-                            )
-                            if (distancia != null) {
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Text(
-                                    text = "• A aprox. ${distancia.toInt()} m",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Color(0xFF94A3B8)
-                                )
-                            }
-                        }
+                        Text(
+                            text = if (distancia != null) {
+                                val metros = distancia.coerceAtLeast(0f)
+                                if (metros < 1000) "Distancia aproximada: ${metros.toInt()} m"
+                                else "Distancia aproximada: ${String.format(java.util.Locale.getDefault(), "%.1f", metros / 1000)} km"
+                            } else {
+                                "Distancia no disponible (activa la ubicación)"
+                            },
+                            color = Color(0xFF94A3B8)
+                        )
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        Row(
+                        Button(
+                            onClick = { onVerDetallesClick(punto) },
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF2563EB)
+                            ),
+                            shape = RoundedCornerShape(12.dp)
                         ) {
-                            Button(
-                                onClick = { onEscanearQrClick(punto) },
-                                modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Icon(Icons.Default.QrCodeScanner, contentDescription = null)
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Escanear QR")
-                            }
-
-                            if (!punto.completado) {
-                                Button(
-                                    onClick = {
-                                        viewModel.marcarCompletado(punto.id)
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    Text("Validar")
-                                }
-                            }
+                            Text("Ver detalles")
                         }
                     }
                 }

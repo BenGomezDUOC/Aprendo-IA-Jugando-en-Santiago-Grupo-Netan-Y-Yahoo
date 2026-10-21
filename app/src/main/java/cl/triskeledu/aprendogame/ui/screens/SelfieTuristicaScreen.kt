@@ -1,20 +1,11 @@
 
 package cl.triskeledu.aprendogame.ui.screens
 
-import android.Manifest
-import android.content.pm.PackageManager
 import android.util.Log
 import android.widget.Toast
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-
-import androidx.camera.core.CameraSelector
-import androidx.camera.core.ImageCapture
-import androidx.camera.core.ImageCaptureException
-import androidx.camera.core.Preview
-import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.view.PreviewView
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -25,8 +16,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Cameraswitch
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Info
 
 import androidx.compose.material3.*
 
@@ -41,10 +32,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 
-import androidx.core.content.ContextCompat
-import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.core.content.FileProvider
 
 import cl.triskeledu.aprendogame.storage.SelfieGaleria
 
@@ -64,148 +53,127 @@ fun SelfieTuristicaScreen(
 ) {
 
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
 
     // Permite guardar la foto sin bloquear la pantalla.
     val scope = rememberCoroutineScope()
 
-    // Colores del diseño.
+    // Colores originales.
     val fondoOscuro = Color(0xFF101114)
     val fondoControles = Color(0xFF17181C)
     val textoSecundario = Color(0xFFBFC0C5)
 
-    // Comprueba si tenemos permiso para usar la cámara.
-    var permisoCamara by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.CAMERA
-            ) == PackageManager.PERMISSION_GRANTED
-        )
-    }
+    // --------------------------------------------------
+    // ESTADOS DE LA FOTOGRAFÍA
+    // --------------------------------------------------
 
-    // Solicita el permiso si todavía no fue concedido.
-    val solicitarPermiso = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { concedido ->
-        permisoCamara = concedido
-    }
-
-    // Indica si estamos capturando o guardando la foto.
+    // Indica si se está capturando o guardando.
     var guardando by remember {
         mutableStateOf(false)
     }
 
-    // Indica si ML Kit está validando la fotografía.
+    // Indica si ML Kit está validando.
     var validando by remember {
         mutableStateOf(false)
     }
 
-    // Ruta del archivo privado utilizado para validar.
+    // Ruta privada utilizada para validar rostro y QR.
     var rutaFoto by remember {
         mutableStateOf<String?>(null)
     }
 
-    // Permite alternar entre cámara frontal y trasera.
-    var camaraFrontal by remember {
-        mutableStateOf(true)
-    }
-
-    // Prepara la captura de fotografías.
-    val imageCapture = remember {
-        ImageCapture.Builder().build()
-    }
-
-    // Vista donde se muestra la imagen de la cámara.
-    val previewView = remember(context) {
-        PreviewView(context).apply {
-            scaleType = PreviewView.ScaleType.FILL_CENTER
-        }
+    // Archivo que utilizará la cámara externa.
+    var archivoFotoPendiente by remember {
+        mutableStateOf<File?>(null)
     }
 
     // --------------------------------------------------
-    // INICIAR LA CÁMARA
+    // ABRIR CÁMARA EXTERNA
     // --------------------------------------------------
 
-    DisposableEffect(
-        permisoCamara,
-        camaraFrontal,
-        lifecycleOwner,
-        previewView
-    ) {
+    val tomarFoto = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { fotoTomada ->
 
-        if (!permisoCamara) {
+        val archivo = archivoFotoPendiente
 
-            onDispose { }
+        archivoFotoPendiente = null
 
-        } else {
+        if (
+            fotoTomada &&
+            archivo != null &&
+            archivo.isFile &&
+            archivo.length() > 0L
+        ) {
 
-            val cameraProviderFuture =
-                ProcessCameraProvider.getInstance(context)
-
-            var cameraProvider: ProcessCameraProvider? = null
-            var cancelado = false
-
-            val listener = Runnable {
-
-                if (cancelado) return@Runnable
+            // La cámara guardó una fotografía.
+            // Ahora la copiamos a la galería.
+            scope.launch {
 
                 try {
 
-                    val provider = cameraProviderFuture.get()
+                    val uriGaleria = withContext(Dispatchers.IO) {
 
-                    cameraProvider = provider
-
-                    // Prepara la vista previa.
-                    val preview = Preview.Builder().build()
-
-                    preview.surfaceProvider =
-                        previewView.surfaceProvider
-
-                    // Elige cámara frontal o trasera.
-                    val selector = if (camaraFrontal) {
-                        CameraSelector.DEFAULT_FRONT_CAMERA
-                    } else {
-                        CameraSelector.DEFAULT_BACK_CAMERA
+                        SelfieGaleria.guardar(
+                            context = context,
+                            rutaFoto = archivo.absolutePath
+                        )
                     }
 
-                    // Desconecta la cámara anterior.
-                    provider.unbindAll()
+                    if (uriGaleria != null) {
 
-                    // Conecta la cámara a esta pantalla.
-                    provider.bindToLifecycle(
-                        lifecycleOwner,
-                        selector,
-                        preview,
-                        imageCapture
-                    )
+                        // Conservamos el archivo privado para ML Kit.
+                        rutaFoto = archivo.absolutePath
+
+                        Toast.makeText(
+                            context,
+                            "Fotografía guardada en la galería",
+                            Toast.LENGTH_SHORT
+                        ).show()
+
+                    } else {
+
+                        Toast.makeText(
+                            context,
+                            "No se pudo guardar la fotografía en la galería",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
 
                 } catch (e: Exception) {
 
                     Log.e(
                         "SelfieTuristica",
-                        "No se pudo iniciar la cámara",
+                        "Error al guardar la fotografía",
                         e
                     )
 
                     Toast.makeText(
                         context,
-                        "No se pudo abrir la cámara",
+                        "Ocurrió un error al guardar la fotografía",
                         Toast.LENGTH_LONG
                     ).show()
+
+                } finally {
+
+                    guardando = false
                 }
             }
 
-            cameraProviderFuture.addListener(
-                listener,
-                ContextCompat.getMainExecutor(context)
-            )
+        } else {
 
-            onDispose {
+            // El usuario canceló la captura o no se generó
+            // una fotografía válida.
+            archivo?.delete()
 
-                cancelado = true
+            guardando = false
 
-                cameraProvider?.unbindAll()
+            if (fotoTomada) {
+
+                Toast.makeText(
+                    context,
+                    "No se encontró la fotografía capturada",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
     }
@@ -244,8 +212,7 @@ fun SelfieTuristicaScreen(
             ) {
 
                 Icon(
-                    imageVector =
-                        Icons.AutoMirrored.Filled.ArrowBack,
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Volver",
                     tint = Color.White
                 )
@@ -278,7 +245,7 @@ fun SelfieTuristicaScreen(
         )
 
         // --------------------------------------------------
-        // VISTA DE LA CÁMARA
+        // ÁREA PRINCIPAL
         // --------------------------------------------------
 
         Box(
@@ -291,38 +258,39 @@ fun SelfieTuristicaScreen(
             contentAlignment = Alignment.Center
         ) {
 
-            if (permisoCamara) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
 
-                AndroidView(
-                    factory = { previewView },
-                    modifier = Modifier.fillMaxSize()
+                Icon(
+                    imageVector = Icons.Default.CameraAlt,
+                    contentDescription = "Cámara",
+                    tint = Color.White,
+                    modifier = Modifier.size(70.dp)
                 )
 
-            } else {
+                Spacer(
+                    modifier = Modifier.height(16.dp)
+                )
 
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement =
-                        Arrangement.spacedBy(16.dp),
-                    modifier = Modifier.padding(20.dp)
-                ) {
+                Text(
+                    text = when {
+                        guardando ->
+                            "Capturando y guardando fotografía..."
 
-                    Text(
-                        text = "Necesitamos permiso para utilizar la cámara.",
-                        color = Color.White,
-                        textAlign = TextAlign.Center
-                    )
+                        rutaFoto != null ->
+                            "Tu fotografía está guardada en la galería"
 
-                    Button(
-                        onClick = {
-                            solicitarPermiso.launch(
-                                Manifest.permission.CAMERA
-                            )
-                        }
-                    ) {
-                        Text("Permitir cámara")
-                    }
-                }
+                        else ->
+                            "Presiona el botón inferior para abrir la cámara"
+                    },
+                    color = Color.White,
+                    textAlign = TextAlign.Center
+                )
             }
         }
 
@@ -351,32 +319,17 @@ fun SelfieTuristicaScreen(
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement =
-                        Arrangement.SpaceEvenly
+                    horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
 
-                    // Cambia entre cámara frontal y trasera.
-                    IconButton(
-                        onClick = {
-                            camaraFrontal = !camaraFrontal
-                        },
-                        enabled = permisoCamara &&
-                                !guardando &&
-                                !validando,
+                    // Espacio para mantener centrado
+                    // el botón de captura.
+                    Spacer(
                         modifier = Modifier.size(54.dp)
-                    ) {
-
-                        Icon(
-                            imageVector =
-                                Icons.Default.Cameraswitch,
-                            contentDescription = "Cambiar cámara",
-                            tint = Color.White,
-                            modifier = Modifier.size(28.dp)
-                        )
-                    }
+                    )
 
                     // ------------------------------------------
-                    // BOTÓN CIRCULAR PARA TOMAR SELFIE
+                    // BOTÓN CIRCULAR DE CAPTURA
                     // ------------------------------------------
 
                     Box(
@@ -390,20 +343,14 @@ fun SelfieTuristicaScreen(
                             .padding(6.dp)
                             .clip(CircleShape)
                             .background(
-                                if (
-                                    permisoCamara &&
-                                    !guardando &&
-                                    !validando
-                                ) {
+                                if (!guardando && !validando) {
                                     Color.White
                                 } else {
                                     Color.Gray
                                 }
                             )
                             .clickable(
-                                enabled = permisoCamara &&
-                                        !guardando &&
-                                        !validando
+                                enabled = !guardando && !validando
                             ) {
 
                                 guardando = true
@@ -411,9 +358,7 @@ fun SelfieTuristicaScreen(
                                 try {
 
                                     // PASO 1:
-                                    // Crea una carpeta privada para
-                                    // conservar la imagen que validará ML Kit.
-
+                                    // Prepara la carpeta privada.
                                     val carpeta = File(
                                         context.filesDir,
                                         "selfies"
@@ -423,14 +368,14 @@ fun SelfieTuristicaScreen(
                                         !carpeta.exists() &&
                                         !carpeta.mkdirs()
                                     ) {
+
                                         throw IllegalStateException(
-                                            "No se pudo crear la carpeta"
+                                            "No se pudo crear la carpeta de selfies"
                                         )
                                     }
 
                                     // PASO 2:
-                                    // Genera un nombre único para la foto.
-
+                                    // Genera un nombre único.
                                     val fecha = SimpleDateFormat(
                                         "yyyyMMdd_HHmmss_SSS",
                                         Locale.US
@@ -441,109 +386,38 @@ fun SelfieTuristicaScreen(
                                         "selfie_$fecha.jpg"
                                     )
 
-                                    val opciones =
-                                        ImageCapture.OutputFileOptions
-                                            .Builder(archivo)
-                                            .build()
-
                                     // PASO 3:
-                                    // Captura la fotografía con CameraX.
+                                    // Guarda el archivo pendiente.
+                                    archivoFotoPendiente = archivo
 
-                                    imageCapture.takePicture(
-                                        opciones,
-                                        ContextCompat.getMainExecutor(
-                                            context
-                                        ),
-
-                                        object :
-                                            ImageCapture.OnImageSavedCallback {
-
-                                            override fun onImageSaved(
-                                                outputFileResults:
-                                                ImageCapture.OutputFileResults
-                                            ) {
-
-                                                // PASO 4:
-                                                // La fotografía ya fue capturada.
-                                                // Ahora se guarda en la galería.
-
-                                                scope.launch {
-
-                                                    val uriGaleria =
-                                                        withContext(
-                                                            Dispatchers.IO
-                                                        ) {
-
-                                                            SelfieGaleria.guardar(
-                                                                context = context,
-                                                                rutaFoto =
-                                                                    archivo.absolutePath
-                                                            )
-                                                        }
-
-                                                    guardando = false
-
-                                                    if (uriGaleria != null) {
-
-                                                        // PASO 5:
-                                                        // Conserva la ruta privada
-                                                        // para validar rostro y QR.
-
-                                                        rutaFoto =
-                                                            archivo.absolutePath
-
-                                                        Toast.makeText(
-                                                            context,
-                                                            "Fotografía guardada en la galería",
-                                                            Toast.LENGTH_SHORT
-                                                        ).show()
-
-                                                    } else {
-
-                                                        Toast.makeText(
-                                                            context,
-                                                            "No se pudo guardar la fotografía en la galería",
-                                                            Toast.LENGTH_LONG
-                                                        ).show()
-                                                    }
-                                                }
-                                            }
-
-                                            override fun onError(
-                                                exception:
-                                                ImageCaptureException
-                                            ) {
-
-                                                guardando = false
-
-                                                Log.e(
-                                                    "SelfieTuristica",
-                                                    "Error al capturar",
-                                                    exception
-                                                )
-
-                                                Toast.makeText(
-                                                    context,
-                                                    "No se pudo tomar la fotografía",
-                                                    Toast.LENGTH_LONG
-                                                ).show()
-                                            }
-                                        }
+                                    // PASO 4:
+                                    // Comparte el archivo con la cámara.
+                                    val uriFoto = FileProvider.getUriForFile(
+                                        context,
+                                        "${context.packageName}.fileprovider",
+                                        archivo
                                     )
 
+                                    // PASO 5:
+                                    // Abre la cámara externa.
+                                    tomarFoto.launch(uriFoto)
+
                                 } catch (e: Exception) {
+
+                                    archivoFotoPendiente?.delete()
+                                    archivoFotoPendiente = null
 
                                     guardando = false
 
                                     Log.e(
                                         "SelfieTuristica",
-                                        "Error al preparar la captura",
+                                        "Error al abrir la cámara",
                                         e
                                     )
 
                                     Toast.makeText(
                                         context,
-                                        "No se pudo preparar la fotografía",
+                                        "No se pudo abrir la cámara",
                                         Toast.LENGTH_LONG
                                     ).show()
                                 }
@@ -561,22 +435,22 @@ fun SelfieTuristicaScreen(
                         }
                     }
 
-                    // Botón de información.
+                    // Información sobre la captura.
                     IconButton(
                         onClick = {
+
                             Toast.makeText(
                                 context,
-                                "Utiliza el botón central para tomar la fotografía",
-                                Toast.LENGTH_SHORT
+                                "Toma una fotografía donde aparezcan tu rostro y el QR del lugar",
+                                Toast.LENGTH_LONG
                             ).show()
                         },
                         modifier = Modifier.size(54.dp)
                     ) {
 
                         Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription =
-                                "Información de captura",
+                            imageVector = Icons.Default.Info,
+                            contentDescription = "Información de captura",
                             tint = Color.White,
                             modifier = Modifier.size(26.dp)
                         )
@@ -620,12 +494,9 @@ fun SelfieTuristicaScreen(
 
                             validando = true
 
-                            // Llama a GameViewModel para validar
-                            // el rostro y el QR correspondiente.
-
-                            onFotoGuardada(ruta) {
-                                    exito,
-                                    mensaje ->
+                            // GameViewModel valida el rostro,
+                            // el QR y registra los puntos.
+                            onFotoGuardada(ruta) { exito, mensaje ->
 
                                 validando = false
 
@@ -678,8 +549,7 @@ fun SelfieTuristicaScreen(
                     onClick = {
 
                         // Elimina solamente el archivo privado.
-                        // NO elimina la foto de la galería.
-
+                        // La foto de la galería permanece guardada.
                         rutaFoto?.let { ruta ->
                             File(ruta).delete()
                         }
@@ -700,3 +570,5 @@ fun SelfieTuristicaScreen(
         }
     }
 }
+
+

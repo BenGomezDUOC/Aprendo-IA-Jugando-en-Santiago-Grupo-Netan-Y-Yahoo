@@ -1,3 +1,4 @@
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -6,6 +7,7 @@ plugins {
 
 android {
     namespace = "cl.triskeledu.aprendogame"
+
     compileSdk {
         version = release(37)
     }
@@ -24,14 +26,20 @@ android {
         release {
             optimization {
                 enable = true
-                packageScope = setOf("androidx.**", "kotlin.**", "kotlinx.**")
+                packageScope = setOf(
+                    "androidx.**",
+                    "kotlin.**",
+                    "kotlinx.**"
+                )
             }
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+
     buildFeatures {
         compose = true
     }
@@ -63,22 +71,21 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
+
     implementation(libs.androidx.navigation.compose)
     implementation("androidx.compose.material:material-icons-extended")
-    // Reproduce videos educativos dentro de la aplicación.
+
+    // Reproductor de videos educativos
     implementation("androidx.media3:media3-exoplayer:1.6.1")
-    // Muestra los controles del reproductor:
-    // reproducir, pausar y avanzar.
     implementation("androidx.media3:media3-ui:1.6.1")
 
-
+    // CameraX y lector QR
     implementation(libs.androidx.camera.core)
     implementation(libs.androidx.camera.camera2)
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
     implementation(libs.mlkit.barcode.scanning)
 
-    // Google Code Scanner: lector QR utilizado en el ejemplo del profesor
     implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
 
     // OpenStreetMap y GPS
@@ -90,9 +97,10 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:1.4.2")
     implementation("androidx.camera:camera-view:1.4.2")
 
-    // Detecta rostros en fotografías.
+    // Detección de rostros y QR en fotografías
     implementation("com.google.mlkit:face-detection:16.1.7")
-
-// Detecta y lee códigos QR en fotografías.
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
+
+    // Generación de códigos QR
+    implementation("com.google.zxing:core:3.5.3")
 }

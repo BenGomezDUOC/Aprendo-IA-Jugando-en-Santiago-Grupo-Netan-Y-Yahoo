@@ -116,4 +116,15 @@ interface VisitaDao {
     fun contarQrDescubiertos(
         usuarioId: Int
     ): Flow<Int>
+    // Opción B: una selfie bonificada por jugador y por código QR.
+    @Query("""
+        SELECT * FROM visitas_realizadas
+        WHERE capsulaId = :capsulaId AND usuarioId = :usuarioId
+        AND completada = 1
+        LIMIT 1
+    """)
+    suspend fun getVisitaPorCapsulaYUsuario(
+        capsulaId: Int,
+        usuarioId: Int
+    ): VisitaRealizada?
 }

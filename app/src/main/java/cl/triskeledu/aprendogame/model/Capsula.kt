@@ -1,14 +1,15 @@
+
 package cl.triskeledu.aprendogame.model
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
- * Entidad de Room que representa una cápsula educativa de Inteligencia Artificial.
- * Se asocia a un punto del mapa y contiene el código QR que Mary debe escanear
- * y el video/puntos que Juan Pablo reproducirá y otorgará.
+ * Entidad de Room que representa una cápsula educativa
+ * de Inteligencia Artificial asociada a un punto turístico.
  */
 @Entity(
     tableName = "capsulas",
@@ -26,12 +27,29 @@ import androidx.room.PrimaryKey
     ]
 )
 data class Capsula(
+
     @PrimaryKey(autoGenerate = true)
     val id: Int = 0,
+
     val titulo: String,
+
     val codigoQr: String,
+
     val urlVideo: String,
+
     val puntos: Int,
+
     val puntoId: Int,
-    val descripcion: String = ""
+
+    val descripcion: String = "",
+
+    // Clasifica la cápsula según su contenido.
+    @ColumnInfo(defaultValue = "'General'")
+    val categoria: String = "General",
+
+    // Indica si está publicada o en borrador.
+    @ColumnInfo(defaultValue = "'PUBLICADA'")
+    val estado: String = "PUBLICADA"
 )
+
+
