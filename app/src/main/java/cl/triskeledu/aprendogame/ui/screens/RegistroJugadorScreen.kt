@@ -1,4 +1,4 @@
-package cl.triskeledu.aprendogame.ui.screens
+﻿package cl.triskeledu.aprendogame.ui.screens
 
 import android.util.Patterns
 import androidx.compose.foundation.Image
@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cl.triskeledu.aprendogame.R
 import cl.triskeledu.aprendogame.model.Usuario
+import cl.triskeledu.aprendogame.validation.FormularioValidator
 
 @Composable
 fun RegistroJugador(
@@ -57,41 +58,22 @@ fun RegistroJugador(
     var guardando by remember { mutableStateOf(false) }
     var errorRegistro by remember { mutableStateOf(false) }
 
-    val errorNombre = when {
-        nombre.isBlank() -> "Ingresa tu nombre completo."
-        nombre.trim().length < 3 -> "El nombre debe tener al menos 3 caracteres."
-        else -> null
-    }
-    val errorAlias = when {
-        alias.isBlank() -> "Ingresa un alias."
-        alias.trim().length < 3 -> "El alias debe tener al menos 3 caracteres."
-        else -> null
-    }
-    val errorCorreo = when {
-        correo.isBlank() -> "Ingresa tu correo electrónico."
-        !Patterns.EMAIL_ADDRESS.matcher(correo.trim()).matches() -> "Ingresa un correo electrónico válido."
-        else -> null
-    }
-    val digitosTelefono = telefono.filter { it.isDigit() }
-    val errorTelefono = when {
-        telefono.isBlank() -> "Ingresa tu teléfono."
-        digitosTelefono.length < 8 || digitosTelefono.length > 15 -> "Ingresa un teléfono válido (8 a 15 dígitos)."
-        else -> null
-    }
-    val errorContrasena = when {
-        contrasena.isBlank() -> "Ingresa una contraseña."
-        contrasena.length < 8 -> "La contraseña debe tener al menos 8 caracteres."
-        else -> null
-    }
-    val errorConfirmacion = when {
-        confirmarContrasena.isBlank() -> "Confirma tu contraseña."
-        confirmarContrasena != contrasena -> "Las contraseñas no coinciden."
-        else -> null
-    }
-    val formularioValido = listOf(
-        errorNombre, errorAlias, errorCorreo, errorTelefono,
-        errorContrasena, errorConfirmacion
-    ).all { it == null }
+    // Validación centralizada y desacoplada de la interfaz (IE 2.2.1)
+    val estadoValidacion = FormularioValidator.validarFormularioCompleto(
+        nombre = nombre,
+        alias = alias,
+        correo = correo,
+        telefono = telefono,
+        contrasena = contrasena,
+        confirmarContrasena = confirmarContrasena
+    )
+    val errorNombre = estadoValidacion.errorNombre
+    val errorAlias = estadoValidacion.errorAlias
+    val errorCorreo = estadoValidacion.errorCorreo
+    val errorTelefono = estadoValidacion.errorTelefono
+    val errorContrasena = estadoValidacion.errorContrasena
+    val errorConfirmacion = estadoValidacion.errorConfirmacion
+    val formularioValido = estadoValidacion.esValido
 
     @Composable
     fun Campo(
