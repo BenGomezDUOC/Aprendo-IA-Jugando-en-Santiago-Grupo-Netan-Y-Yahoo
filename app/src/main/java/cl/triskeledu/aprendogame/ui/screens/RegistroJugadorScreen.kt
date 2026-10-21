@@ -28,6 +28,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.unit.sp
 import cl.triskeledu.aprendogame.R
 import cl.triskeledu.aprendogame.model.Usuario
@@ -192,11 +195,22 @@ fun RegistroJugador(
                     listOf(R.drawable.avatar1, R.drawable.avatar2, R.drawable.avatar3).forEachIndexed { index, imagen ->
                         val numero = index + 1
                         val seleccionado = avatarSeleccionado == numero
+                        val escala by animateFloatAsState(
+                            targetValue = if (seleccionado) 1.12f else 1.0f,
+                            animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+                            label = "avatarScale_$numero"
+                        )
+                        val bordeGrosor by animateDpAsState(
+                            targetValue = if (seleccionado) 3.5.dp else 1.dp,
+                            animationSpec = tween(durationMillis = 250),
+                            label = "avatarBorder_$numero"
+                        )
                         Box(
                             modifier = Modifier
+                                .scale(escala)
                                 .size(76.dp)
                                 .clip(CircleShape)
-                                .border(if (seleccionado) 3.dp else 1.dp, if (seleccionado) celeste else Color(0xFF607D98), CircleShape)
+                                .border(bordeGrosor, if (seleccionado) celeste else Color(0xFF607D98), CircleShape)
                                 .clickable(enabled = !guardando) { avatarSeleccionado = numero }
                         ) {
                             Image(

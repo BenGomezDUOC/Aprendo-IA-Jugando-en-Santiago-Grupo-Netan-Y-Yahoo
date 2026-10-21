@@ -1,4 +1,4 @@
-package cl.triskeledu.aprendogame.ui.screens
+﻿package cl.triskeledu.aprendogame.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -20,6 +20,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import cl.triskeledu.aprendogame.viewmodel.GameViewModel
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutSlowInEasing
 import java.util.Locale
 
 import androidx.compose.runtime.collectAsState
@@ -167,6 +170,17 @@ fun PuntajeProgresoScreen(
         progresoExploracion * 100
     ).replace(".", ",")
 
+    val progresoPuntosAnimado by animateFloatAsState(
+        targetValue = progresoPuntos,
+        animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing),
+        label = "progresoPuntos"
+    )
+    val progresoExploracionAnimado by animateFloatAsState(
+        targetValue = progresoExploracion,
+        animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing),
+        label = "progresoExploracion"
+    )
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -241,7 +255,7 @@ fun PuntajeProgresoScreen(
                 Spacer(modifier = Modifier.height(18.dp))
 
                 LinearProgressIndicator(
-                    progress = { progresoPuntos },
+                    progress = { progresoPuntosAnimado },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(10.dp),
@@ -334,7 +348,7 @@ fun PuntajeProgresoScreen(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 LinearProgressIndicator(
-                    progress = { progresoExploracion },
+                    progress = { progresoExploracionAnimado },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(9.dp),
