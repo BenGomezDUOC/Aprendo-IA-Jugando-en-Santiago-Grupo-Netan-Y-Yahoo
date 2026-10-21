@@ -8,7 +8,7 @@ Plataforma móvil gamificada y georreferenciada para el aprendizaje de Inteligen
 
 * **Benjamín Gómez** — *Arquitectura de Persistencia, Base de Datos Room SQLite, Patrón Repositorio, Notificaciones Nativas y Validación Desacoplada.*
 * **Fernando Zapata** — *Módulo de Geolocalización, Integración OpenStreetMap (OSMDroid), GPS en Vivo, Tarjetas de Proximidad y UI Outdoor.*
-* **Magdiel Esther Reynoso Ramírez** — *Módulo de Hardware Cámara, Escáner QR, Validación de Selfie Turística, Flujos de Roles y Navegación.*
+* **Magdiel Reynoso** — *Módulo de Hardware Cámara, Escáner QR, Validación de Selfie Turística, Flujos de Roles y Navegación.*
 * **Juan Pablo Taulis** — *Módulo Multimedia, Reproducción de Cápsulas de Video sobre IA, Sistema de Gamificación y Puntuación.*
 
 ---
