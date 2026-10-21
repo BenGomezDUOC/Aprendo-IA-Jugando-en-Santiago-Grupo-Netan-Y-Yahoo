@@ -1,4 +1,4 @@
-﻿package cl.triskeledu.aprendogame.navigation
+package cl.triskeledu.aprendogame.navigation
 
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
@@ -23,6 +23,7 @@ import androidx.navigation.compose.rememberNavController
 
 import cl.triskeledu.aprendogame.data.local.AppDatabase
 import cl.triskeledu.aprendogame.data.local.CuentasPredefinidas
+import cl.triskeledu.aprendogame.data.local.SessionManager
 import cl.triskeledu.aprendogame.model.Capsula
 import cl.triskeledu.aprendogame.model.VideoRegistrado
 import cl.triskeledu.aprendogame.model.Rol
@@ -63,13 +64,38 @@ fun AppNavigation() {
 
     val scope = rememberCoroutineScope()
 
-    // ID de la cuenta que inició sesión.
+    val sessionManager = remember(context) {
+        SessionManager(context.applicationContext)
+    }
+
+    // ID de la cuenta que inició sesión (se recupera de la sesión persistida).
     var jugadorActivoId by rememberSaveable {
-        mutableStateOf<Int?>(null)
+        mutableStateOf<Int?>(sessionManager.obtenerUsuarioActivo())
     }
 
     // ViewModel compartido por todas las pantallas.
     val gameViewModel: GameViewModel = viewModel()
+
+    // Comprueba la validez de la sesión persistida al iniciar la app
+    var sesionInicializada by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        val guardadoId = sessionManager.obtenerUsuarioActivo()
+        if (guardadoId != null) {
+            val existe = withContext(Dispatchers.IO) {
+                usuarioDao.getUsuarioDirecto(guardadoId)
+            }
+            if (existe != null) {
+                jugadorActivoId = existe.id
+                gameViewModel.establecerUsuarioActivo(existe.id)
+            } else {
+                sessionManager.cerrarSesion()
+                jugadorActivoId = null
+                gameViewModel.cerrarSesion()
+            }
+        }
+        sesionInicializada = true
+    }
 
     // ID del punto elegido desde el mapa.
     var puntoDetalleId by rememberSaveable { mutableStateOf<Int?>(null) }
@@ -153,6 +179,7 @@ fun AppNavigation() {
 
     // Cierra la sesión de cualquiera de los tres roles.
     fun cerrarSesionActual() {
+        sessionManager.cerrarSesion()
         jugadorActivoId = null
         gameViewModel.cerrarSesion()
         resultadoCapsula = null
@@ -194,6 +221,23 @@ fun AppNavigation() {
             // ------------------------------------------
 
             composable("inicio") {
+                // Si ya había una sesión persistida válida, salta directo a la pantalla del rol
+                LaunchedEffect(sesionInicializada, usuarioActual) {
+                    if (sesionInicializada && jugadorActivoId != null && usuarioActual != null) {
+                        val destino = when (usuarioActual?.rol) {
+                            Rol.CLIENTE -> "cliente"
+                            Rol.GENERADOR -> "contenido"
+                            Rol.ADMINISTRADOR -> "administrador"
+                            null -> "cliente"
+                        }
+                        navController.navigate(destino) {
+                            popUpTo("inicio") {
+                                inclusive = true
+                            }
+                        }
+                    }
+                }
+
                 InicioScreen(
                     onComenzarClick = {
                         navController.navigate("registro")
@@ -244,7 +288,9 @@ fun AppNavigation() {
 
                                 } else {
 
-                                    jugadorActivoId = resultado.toInt()
+                                    val nuevoId = resultado.toInt()
+                                    sessionManager.guardarUsuarioActivo(nuevoId)
+                                    jugadorActivoId = nuevoId
 
                                     Toast.makeText(
                                         context,
@@ -317,6 +363,7 @@ fun AppNavigation() {
                                     usuarioEncontrado != null
                                 ) {
 
+                                    sessionManager.guardarUsuarioActivo(usuarioEncontrado.id)
                                     jugadorActivoId = usuarioEncontrado.id
                                     onResultado(true)
 
