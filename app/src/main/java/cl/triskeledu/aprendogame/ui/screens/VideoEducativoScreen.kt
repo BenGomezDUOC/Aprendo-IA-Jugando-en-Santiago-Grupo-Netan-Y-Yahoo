@@ -1,11 +1,9 @@
 
-
 package cl.triskeledu.aprendogame.ui.screens
 
 import android.net.Uri
 import android.widget.MediaController
 import android.widget.VideoView
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -24,10 +22,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-
 import cl.triskeledu.aprendogame.R
 import cl.triskeledu.aprendogame.model.Capsula
-
 import cl.triskeledu.aprendogame.model.VideoRegistrado
 
 @Composable
@@ -38,7 +34,7 @@ fun VideoEducativoScreen(
     onVolverColeccion: () -> Unit,
     videoAdicionalId: Int? = null,
     videoRegistrado: VideoRegistrado? = null
-)  {
+) {
 
     // COLORES DE LA INTERFAZ
     val azulOscuro = Color(0xFF203653)
@@ -51,73 +47,103 @@ fun VideoEducativoScreen(
     val puntoId = capsula?.puntoId
 
     // ESTADOS DEL REPRODUCTOR
-    var videoTerminado by remember(capsula?.id, videoAdicionalId, videoRegistrado?.id) {
+    var videoTerminado by remember(
+        capsula?.id, videoAdicionalId, videoRegistrado?.id
+    ) {
         mutableStateOf(false)
     }
 
-    var videoIniciado by remember(capsula?.id, videoAdicionalId, videoRegistrado?.id) {
+    var videoIniciado by remember(
+        capsula?.id, videoAdicionalId, videoRegistrado?.id
+    ) {
         mutableStateOf(false)
     }
 
-    var videoPreparado by remember(capsula?.id, videoAdicionalId, videoRegistrado?.id) {
+    var videoPreparado by remember(
+        capsula?.id, videoAdicionalId, videoRegistrado?.id
+    ) {
         mutableStateOf(false)
     }
 
-    var videoViewInstance by remember(capsula?.id, videoAdicionalId, videoRegistrado?.id) {
+    var videoViewInstance by remember(
+        capsula?.id, videoAdicionalId, videoRegistrado?.id
+    ) {
         mutableStateOf<VideoView?>(null)
     }
 
     // EVITA NOTIFICAR DOS VECES EL MISMO FINAL
-    var finalRegistrado by remember(capsula?.id, videoAdicionalId, videoRegistrado?.id) {
+    var finalRegistrado by remember(
+        capsula?.id, videoAdicionalId, videoRegistrado?.id
+    ) {
         mutableStateOf(false)
     }
 
-    // INFORMACIÓN DE LOS OCHO VIDEOS
-    val tituloVideo = videoRegistrado?.titulo ?: when (videoAdicionalId) {
-        1 -> "IA en nuestra vida cotidiana"
-        2 -> "Ética y uso responsable de la IA"
+    // TÍTULO DEL VIDEO
+    val tituloVideo = videoRegistrado?.titulo
+        ?: when (videoAdicionalId) {
+            1 -> "IA en nuestra vida cotidiana"
+            2 -> "Ética y uso responsable de la IA"
 
-        else -> when (puntoId) {
-            1 -> "¿Qué es la Inteligencia Artificial?"
-            2 -> "Reconocimiento de imágenes"
-            3 -> "IA y medioambiente"
-            4 -> "Aprendizaje automático"
-            5 -> "Redes neuronales"
-            6 -> "Inteligencia Artificial generativa"
-            else -> capsula?.titulo ?: "Video educativo"
+            else -> when (puntoId) {
+                1 -> "¿Qué es la Inteligencia Artificial?"
+                2 -> "Reconocimiento de imágenes"
+                3 -> "IA y medioambiente"
+                4 -> "Aprendizaje automático"
+                5 -> "Redes neuronales"
+                6 -> "Inteligencia Artificial generativa"
+                else -> capsula?.titulo ?: "Video educativo"
+            }
         }
-    }
 
-    val autor = when (videoAdicionalId) {
-        1 -> "Magdiel Reynoso"
-        2 -> "Benjamín Gómez"
-
-        else -> when (puntoId) {
+    // AUTOR DEL VIDEO
+    // Prioridad: autor ingresado por el administrador.
+    // Si es un video antiguo, conserva su autor original.
+    val autor = videoRegistrado?.autor
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+        ?: when (videoAdicionalId) {
             1 -> "Magdiel Reynoso"
-            2 -> "Fernando Zapata"
-            3 -> "Juan Pablo Taulis"
-            4 -> "Benjamín Gómez"
-            5 -> "Juan Pablo Taulis"
-            6 -> "Fernando Zapata"
-            else -> "Triskeledu"
+            2 -> "Benjamín Gómez"
+
+            else -> when (puntoId) {
+                1 -> "Magdiel Reynoso"
+                2 -> "Fernando Zapata"
+                3 -> "Juan Pablo Taulis"
+                4 -> "Benjamín Gómez"
+                5 -> "Juan Pablo Taulis"
+                6 -> "Fernando Zapata"
+                else -> "Triskeledu"
+            }
         }
-    }
 
-    val duracion = when (videoAdicionalId) {
-        1 -> "0:46"
-        2 -> "0:47"
-
-        else -> when (puntoId) {
-            1 -> "0:44"
-            2 -> "0:45"
-            3 -> "0:47"
-            4 -> "0:48"
-            5 -> "0:48"
-            6 -> "0:46"
-            else -> "--:--"
+    // DURACIÓN DEL VIDEO
+    // El administrador la ingresa como 2:35.
+    // Room la guarda como 155000 milisegundos.
+    // Aquí vuelve a mostrarse como 2:35.
+    val duracion = videoRegistrado?.duracion
+        ?.takeIf { it > 0L }
+        ?.let { milisegundos ->
+            val totalSegundos = milisegundos / 1000
+            val minutos = totalSegundos / 60
+            val segundos = totalSegundos % 60
+            "%d:%02d".format(minutos, segundos)
         }
-    }
+        ?: when (videoAdicionalId) {
+            1 -> "0:46"
+            2 -> "0:47"
 
+            else -> when (puntoId) {
+                1 -> "0:44"
+                2 -> "0:45"
+                3 -> "0:47"
+                4 -> "0:48"
+                5 -> "0:48"
+                6 -> "0:46"
+                else -> "--:--"
+            }
+        }
+
+    // TEMA
     val tema = when (videoAdicionalId) {
         1 -> "IA en la vida cotidiana"
         2 -> "Ética de la Inteligencia Artificial"
@@ -133,69 +159,76 @@ fun VideoEducativoScreen(
         }
     }
 
+    // LUGAR
     val lugar = if (videoRegistrado != null) {
         "Nuevo contenido educativo"
-    } else when (videoAdicionalId) {
-        1, 2 -> "Contenido educativo adicional"
+    } else {
+        when (videoAdicionalId) {
+            1, 2 -> "Contenido educativo adicional"
 
-        else -> when (puntoId) {
-            1 -> "Plaza de Armas"
-            2 -> "Cerro Santa Lucía"
-            3 -> "Cerro San Cristóbal"
-            4 -> "Palacio de La Moneda"
-            5 -> "Parque Forestal"
-            6 -> "Barrio Bellavista"
-            else -> "Triskeledu"
+            else -> when (puntoId) {
+                1 -> "Plaza de Armas"
+                2 -> "Cerro Santa Lucía"
+                3 -> "Cerro San Cristóbal"
+                4 -> "Palacio de La Moneda"
+                5 -> "Parque Forestal"
+                6 -> "Barrio Bellavista"
+                else -> "Triskeledu"
+            }
         }
     }
 
-    val descripcionVideo = videoRegistrado?.descripcion ?: when (videoAdicionalId) {
-        1 -> "Descubre cómo utilizamos la inteligencia artificial en nuestra vida cotidiana, por ejemplo, en los asistentes virtuales, las recomendaciones y las aplicaciones móviles."
+    // DESCRIPCIÓN
+    val descripcionVideo = videoRegistrado?.descripcion
+        ?: when (videoAdicionalId) {
+            1 -> "Descubre cómo utilizamos la inteligencia artificial en nuestra vida cotidiana, por ejemplo, en los asistentes virtuales, las recomendaciones y las aplicaciones móviles."
 
-        2 -> "Aprende sobre la importancia de utilizar la inteligencia artificial de manera ética y responsable, respetando la privacidad, evitando los prejuicios y verificando la información."
+            2 -> "Aprende sobre la importancia de utilizar la inteligencia artificial de manera ética y responsable, respetando la privacidad, evitando los prejuicios y verificando la información."
 
-        else -> when (puntoId) {
-            1 -> "Aprende qué es la inteligencia artificial, cómo reconoce imágenes, comprende preguntas y ayuda a estudiar la historia de Santiago."
+            else -> when (puntoId) {
+                1 -> "Aprende qué es la inteligencia artificial, cómo reconoce imágenes, comprende preguntas y ayuda a estudiar la historia de Santiago."
 
-            2 -> "Descubre cómo la visión artificial permite reconocer objetos, plantas y monumentos mediante patrones aprendidos de imágenes."
+                2 -> "Descubre cómo la visión artificial permite reconocer objetos, plantas y monumentos mediante patrones aprendidos de imágenes."
 
-            3 -> "Conoce cómo la inteligencia artificial analiza datos ambientales, estudia la calidad del aire y ayuda a proteger la naturaleza."
+                3 -> "Conoce cómo la inteligencia artificial analiza datos ambientales, estudia la calidad del aire y ayuda a proteger la naturaleza."
 
-            4 -> "Aprende cómo funciona el machine learning y cómo los modelos utilizan datos para identificar patrones y realizar predicciones."
+                4 -> "Aprende cómo funciona el machine learning y cómo los modelos utilizan datos para identificar patrones y realizar predicciones."
 
-            5 -> "Descubre cómo funcionan las redes neuronales artificiales y cómo pueden reconocer plantas, voces y otros patrones."
+                5 -> "Descubre cómo funcionan las redes neuronales artificiales y cómo pueden reconocer plantas, voces y otros patrones."
 
-            6 -> "Aprende cómo la inteligencia artificial generativa puede crear textos, imágenes y sonidos, y por qué debemos utilizarla responsablemente."
+                6 -> "Aprende cómo la inteligencia artificial generativa puede crear textos, imágenes y sonidos, y por qué debemos utilizarla responsablemente."
 
-            else -> capsula?.descripcion?.ifBlank {
-                "Descubre nuevos conocimientos sobre Inteligencia Artificial."
-            } ?: "Descubre nuevos conocimientos sobre Inteligencia Artificial."
+                else -> capsula?.descripcion?.ifBlank {
+                    "Descubre nuevos conocimientos sobre Inteligencia Artificial."
+                } ?: "Descubre nuevos conocimientos sobre Inteligencia Artificial."
+            }
         }
-    }
 
-    // SELECCIONA EL ARCHIVO MP4 LOCAL
+    // VIDEO LOCAL DE LOS CONTENIDOS ANTIGUOS
     val videoLocal = if (videoRegistrado != null) {
         null
-    } else when (videoAdicionalId) {
-        1 -> R.raw.video_ia_cotidiana
-        2 -> R.raw.video_etica_ia
+    } else {
+        when (videoAdicionalId) {
+            1 -> R.raw.video_ia_cotidiana
+            2 -> R.raw.video_etica_ia
 
-        else -> when (puntoId) {
-            1 -> R.raw.video_plaza_armas
-            2 -> R.raw.video_cerro_santa_lucia
-            3 -> R.raw.video_cerro_san_cristobal
-            4 -> R.raw.video_palacio_de_la_moneda
-            5 -> R.raw.video_parque_forestal
-            6 -> R.raw.video_barrio_bellavista
-            else -> null
+            else -> when (puntoId) {
+                1 -> R.raw.video_plaza_armas
+                2 -> R.raw.video_cerro_santa_lucia
+                3 -> R.raw.video_cerro_san_cristobal
+                4 -> R.raw.video_palacio_de_la_moneda
+                5 -> R.raw.video_parque_forestal
+                6 -> R.raw.video_barrio_bellavista
+                else -> null
+            }
         }
     }
 
-    // URL ALTERNATIVA SI NO HAY VIDEO LOCAL
+    // VIDEO REGISTRADO POR EL ADMINISTRADOR
     val urlVideo = videoRegistrado?.urlVideo
         ?: capsula?.urlVideo.orEmpty()
 
-    // REGISTRA LA FINALIZACIÓN UNA SOLA VEZ
+    // REGISTRAR FINALIZACIÓN DEL VIDEO
     fun finalizarVideo() {
         videoTerminado = true
         videoIniciado = false
@@ -206,8 +239,12 @@ fun VideoEducativoScreen(
         }
     }
 
-    // DETENER EL VIDEO AL SALIR DE LA PANTALLA
-    DisposableEffect(capsula?.id, videoAdicionalId, videoRegistrado?.id)  {
+    // DETENER EL VIDEO AL SALIR
+    DisposableEffect(
+        capsula?.id,
+        videoAdicionalId,
+        videoRegistrado?.id
+    ) {
         onDispose {
             videoViewInstance?.stopPlayback()
             videoViewInstance = null
@@ -220,7 +257,7 @@ fun VideoEducativoScreen(
             .background(fondoPantalla)
     ) {
 
-        // ENCABEZADO CON FLECHA PARA REGRESAR A LA PANTALLA ANTERIOR.
+        // ENCABEZADO
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -228,6 +265,7 @@ fun VideoEducativoScreen(
                 .height(64.dp),
             contentAlignment = Alignment.Center
         ) {
+
             IconButton(
                 onClick = {
                     videoViewInstance?.stopPlayback()
@@ -241,6 +279,7 @@ fun VideoEducativoScreen(
                     tint = Color.White
                 )
             }
+
             Text(
                 text = "Video Educativo",
                 color = Color.White,
@@ -315,7 +354,7 @@ fun VideoEducativoScreen(
                             modifier = Modifier.fillMaxSize()
                         )
 
-                        // DETECTA CUANDO EL VIDEO LLEGA AL FINAL
+                        // DETECTAR FINAL DEL VIDEO
                         LaunchedEffect(
                             videoIniciado,
                             videoViewInstance
@@ -333,7 +372,8 @@ fun VideoEducativoScreen(
 
                                     val reproductor = videoViewInstance
 
-                                    if (reproductor != null &&
+                                    if (
+                                        reproductor != null &&
                                         reproductor.isPlaying
                                     ) {
 
@@ -353,7 +393,7 @@ fun VideoEducativoScreen(
                             }
                         }
 
-                        // BOTÓN CENTRAL DE REPRODUCCIÓN
+                        // BOTÓN REPRODUCIR
                         if (!videoIniciado) {
 
                             IconButton(
@@ -446,6 +486,7 @@ fun VideoEducativoScreen(
 
                     Spacer(modifier = Modifier.height(14.dp))
 
+                    // AUTOR REGISTRADO
                     Text(
                         text = "Autor: $autor",
                         fontSize = 14.sp,
@@ -454,6 +495,7 @@ fun VideoEducativoScreen(
 
                     Spacer(modifier = Modifier.height(5.dp))
 
+                    // DURACIÓN REGISTRADA
                     Text(
                         text = "Duración: $duracion",
                         fontSize = 14.sp,
@@ -559,4 +601,3 @@ fun VideoEducativoScreen(
         }
     }
 }
-

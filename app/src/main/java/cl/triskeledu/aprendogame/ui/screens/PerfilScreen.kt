@@ -42,6 +42,8 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 
+import androidx.compose.animation.core.*
+
 
 @Composable
 fun PerfilScreen(
@@ -198,6 +200,24 @@ fun PerfilScreen(
         else -> R.drawable.avatar1
     }
 
+    // Animación continua del avatar: sube y baja suavemente.
+    val movimientoAvatar = rememberInfiniteTransition(
+        label = "movimientoAvatar"
+    )
+
+    val desplazamientoAvatar by movimientoAvatar.animateFloat(
+        initialValue = 0f,
+        targetValue = -18f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(
+                durationMillis = 1500,
+                easing = FastOutSlowInEasing
+            ),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "desplazamientoAvatar"
+    )
+
     // Cuenta únicamente las visitas completadas.
     val selfies = historialVisitas.count { it.completada }
 
@@ -246,6 +266,7 @@ fun PerfilScreen(
                 contentDescription = "Avatar del usuario",
                 modifier = Modifier
                     .size(85.dp)
+                    .offset(y = desplazamientoAvatar.dp)
                     .clip(CircleShape)
                     .border(2.dp, Color(0xFF2563EB), CircleShape)
                     .clickable { abrirEdicion("avatar") },
