@@ -69,9 +69,9 @@ Para facilitar la evaluación y testeo de todos los roles, se encuentran preconf
 
 | Rol | Usuario / Alias | Correo | Contraseña |
 | :--- | :--- | :--- | :--- |
-| **Administrador** | Administrador | `admin@triskeledu.cl` | `admin1234` |
-| **Generador de Contenido** | Generador | `generador@triskeledu.cl` | `generador1234` |
-| **Cliente / Jugador** | *(Cualquier jugador registrado o creado desde la pantalla de Registro)* |
+| **Administrador** | Administrador (`Admin`) | `admin@triskeledu.cl` | `123` |
+| **Generador de Contenido** | Contenido (`GenCont`) | `contenido@triskeledu.cl` | `123` |
+| **Cliente / Jugador** | *(Cualquier jugador registrado o creado desde la pantalla de Registro)* | *(Contraseña elegida al registrarse)* |
 
 ---
 
