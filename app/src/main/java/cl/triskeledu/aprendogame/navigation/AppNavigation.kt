@@ -1,4 +1,4 @@
-package cl.triskeledu.aprendogame.navigation
+﻿package cl.triskeledu.aprendogame.navigation
 
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
@@ -30,7 +30,12 @@ import cl.triskeledu.aprendogame.model.Rol
 import cl.triskeledu.aprendogame.security.PasswordUtils
 import cl.triskeledu.aprendogame.ui.components.BarraNavegacion
 import cl.triskeledu.aprendogame.ui.screens.*
-import cl.triskeledu.aprendogame.viewmodel.GameViewModel
+import cl.triskeledu.aprendogame.viewmodel.ColeccionViewModel
+import cl.triskeledu.aprendogame.viewmodel.EscanerQRViewModel
+import cl.triskeledu.aprendogame.viewmodel.MapaViewModel
+import cl.triskeledu.aprendogame.viewmodel.NotificacionesViewModel
+import cl.triskeledu.aprendogame.viewmodel.SelfieTuristicaViewModel
+import cl.triskeledu.aprendogame.viewmodel.SessionViewModel
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -72,9 +77,13 @@ fun AppNavigation() {
     var jugadorActivoId by rememberSaveable {
         mutableStateOf<Int?>(sessionManager.obtenerUsuarioActivo())
     }
-
-    // ViewModel compartido por todas las pantallas.
-    val gameViewModel: GameViewModel = viewModel()
+    // ViewModels especializados por área funcional.
+    val sessionViewModel: SessionViewModel = viewModel()
+    val coleccionViewModel: ColeccionViewModel = viewModel()
+    val mapaViewModel: MapaViewModel = viewModel()
+    val escanerViewModel: EscanerQRViewModel = viewModel()
+    val notificacionesViewModel: NotificacionesViewModel = viewModel()
+    val selfieViewModel: SelfieTuristicaViewModel = viewModel()
 
     // Comprueba la validez de la sesión persistida al iniciar la app
     var sesionInicializada by remember { mutableStateOf(false) }
@@ -87,11 +96,19 @@ fun AppNavigation() {
             }
             if (existe != null) {
                 jugadorActivoId = existe.id
-                gameViewModel.establecerUsuarioActivo(existe.id)
+                sessionViewModel.setUsuarioActivo(existe.id)
+                coleccionViewModel.setUsuarioActivo(existe.id)
+                escanerViewModel.setUsuarioActivo(existe.id)
+                notificacionesViewModel.setUsuarioActivo(existe.id)
+                selfieViewModel.setUsuarioActivo(existe.id)
             } else {
                 sessionManager.cerrarSesion()
                 jugadorActivoId = null
-                gameViewModel.cerrarSesion()
+                sessionViewModel.cerrarSesion()
+                coleccionViewModel.setUsuarioActivo(null)
+                escanerViewModel.setUsuarioActivo(null)
+                notificacionesViewModel.setUsuarioActivo(null)
+                selfieViewModel.setUsuarioActivo(null)
             }
         }
         sesionInicializada = true
@@ -100,7 +117,7 @@ fun AppNavigation() {
     // ID del punto elegido desde el mapa.
     var puntoDetalleId by rememberSaveable { mutableStateOf<Int?>(null) }
 
-    val usuarioActual by gameViewModel.usuario.collectAsState()
+    val usuarioActual by sessionViewModel.usuario.collectAsState()
 
     // Cápsula descubierta al escanear un QR.
     var resultadoCapsula by remember {
@@ -135,9 +152,17 @@ fun AppNavigation() {
         val id = jugadorActivoId
 
         if (id == null) {
-            gameViewModel.cerrarSesion()
+                sessionViewModel.cerrarSesion()
+                coleccionViewModel.setUsuarioActivo(null)
+                escanerViewModel.setUsuarioActivo(null)
+                notificacionesViewModel.setUsuarioActivo(null)
+                selfieViewModel.setUsuarioActivo(null)
         } else {
-            gameViewModel.establecerUsuarioActivo(id)
+            sessionViewModel.setUsuarioActivo(id)
+            coleccionViewModel.setUsuarioActivo(id)
+            escanerViewModel.setUsuarioActivo(id)
+            notificacionesViewModel.setUsuarioActivo(id)
+            selfieViewModel.setUsuarioActivo(id)
         }
     }
 
@@ -181,7 +206,11 @@ fun AppNavigation() {
     fun cerrarSesionActual() {
         sessionManager.cerrarSesion()
         jugadorActivoId = null
-        gameViewModel.cerrarSesion()
+                sessionViewModel.cerrarSesion()
+                coleccionViewModel.setUsuarioActivo(null)
+                escanerViewModel.setUsuarioActivo(null)
+                notificacionesViewModel.setUsuarioActivo(null)
+                selfieViewModel.setUsuarioActivo(null)
         resultadoCapsula = null
         resultadoPuntos = 0
 
@@ -428,7 +457,10 @@ fun AppNavigation() {
                 } else {
 
                     DashboardScreen(
-                        gameViewModel = gameViewModel,
+                        sessionViewModel = sessionViewModel,
+                        coleccionViewModel = coleccionViewModel,
+                        mapaViewModel = mapaViewModel,
+                        notificacionesViewModel = notificacionesViewModel,
 
                         onMapaClick = {
                             navController.navigate("mapa") {
@@ -487,7 +519,7 @@ fun AppNavigation() {
                     usuarioActual?.rol == Rol.CLIENTE
                 ) {
                     ContenidosEducativosScreen(
-                        gameViewModel = gameViewModel,
+                        coleccionViewModel = coleccionViewModel,
                         onVolver = { navController.popBackStack() },
                         onVideoAdicionalClick = { numeroVideo ->
                             videoAdicionalSeleccionado = numeroVideo
@@ -527,7 +559,8 @@ fun AppNavigation() {
                 ) {
 
                     PuntajeProgresoScreen(
-                        gameViewModel = gameViewModel,
+                        sessionViewModel = sessionViewModel,
+                        coleccionViewModel = coleccionViewModel,
 
                         onVolverClick = {
                             navController.popBackStack()
@@ -564,7 +597,9 @@ fun AppNavigation() {
                 ) {
 
                     HistorialActividadesScreen(
-                        gameViewModel = gameViewModel,
+                        sessionViewModel = sessionViewModel,
+                        coleccionViewModel = coleccionViewModel,
+                        mapaViewModel = mapaViewModel,
                         onVolverClick = {
                             navController.popBackStack()
                         }
@@ -591,7 +626,7 @@ fun AppNavigation() {
                 } else {
 
                     MapaScreen(
-                        viewModel = gameViewModel,
+                        viewModel = mapaViewModel,
                         onVerDetallesClick = { punto ->
                             puntoDetalleId = punto.id
                             navController.navigate("detalle_punto")
@@ -618,7 +653,8 @@ fun AppNavigation() {
                     DetallePuntoScreen(
                         puntoId = id,
                         rol = rol,
-                        gameViewModel = gameViewModel,
+                        mapaViewModel = mapaViewModel,
+                        coleccionViewModel = coleccionViewModel,
                         onVolver = { navController.popBackStack() },
                         onEscanearQr = {
                             if (rol == Rol.CLIENTE) navController.navigate("escanear_qr")
@@ -649,7 +685,7 @@ fun AppNavigation() {
                 ) {
 
                     EscanerQRScreen(
-                        gameViewModel = gameViewModel,
+                        escanerViewModel = escanerViewModel,
 
                         onResultadoQr = { capsula, puntos ->
 
@@ -952,7 +988,7 @@ fun AppNavigation() {
                 } else {
 
                     ColeccionScreen(
-                        gameViewModel = gameViewModel,
+                        coleccionViewModel = coleccionViewModel,
 
                         // Abre el video turístico descubierto por QR.
                         onCapsulaClick = { capsula ->
@@ -1052,7 +1088,7 @@ fun AppNavigation() {
                 val capsula = resultadoCapsula
                 val idJugador = jugadorActivoId
 
-                val videosVistos by gameViewModel.videosVistos
+                val videosVistos by coleccionViewModel.videosVistos
                     .collectAsState()
 
                 if (idJugador == null || capsula == null) {
@@ -1076,7 +1112,7 @@ fun AppNavigation() {
                         yaVisto = yaVisto,
 
                         onVideoTerminado = {
-                            gameViewModel.registrarVideoVisto(
+                            coleccionViewModel.registrarVideoVisto(
                                 capsula.id
                             )
                         },
@@ -1114,7 +1150,7 @@ fun AppNavigation() {
 
                     // Videos adicionales vistos por el usuario activo.
                     val videosAdicionalesVistos by
-                    gameViewModel.videosAdicionalesVistos.collectAsState()
+                    coleccionViewModel.videosAdicionalesVistos.collectAsState()
 
                     // Comprueba si este video ya fue visto.
                     val yaVisto = videosAdicionalesVistos.any {
@@ -1128,7 +1164,7 @@ fun AppNavigation() {
 
                         // Guarda el video cuando termina.
                         onVideoTerminado = {
-                            gameViewModel.registrarVideoAdicionalVisto(
+                            coleccionViewModel.registrarVideoAdicionalVisto(
                                 numeroVideo
                             )
                         },
@@ -1169,7 +1205,7 @@ fun AppNavigation() {
 
                         onFotoGuardada = { ruta, informarResultado ->
 
-                            gameViewModel.validarYRegistrarSelfie(
+                            selfieViewModel.validarYRegistrarSelfie(
                                 rutaFoto = ruta,
                                 codigoQrEsperado = capsula.codigoQr,
                                 puntoId = capsula.puntoId,
@@ -1207,7 +1243,7 @@ fun AppNavigation() {
                     // Notificaciones de la cuenta que inició sesión.
                     // Funciona para Cliente, Generador y Administrador.
                     NotificacionesScreen(
-                        gameViewModel = gameViewModel,
+                        notificacionesViewModel = notificacionesViewModel,
 
                         onVolver = {
                             volverDesdePerfil()
@@ -1278,18 +1314,18 @@ fun AppNavigation() {
                 }.collectAsState(initial = emptyList())
 
                 // Recupera las cápsulas y los QR descubiertos.
-                val capsulas by gameViewModel.capsulas.collectAsState()
+                val capsulas by coleccionViewModel.capsulas.collectAsState()
 
                 val descubrimientos by
-                gameViewModel.descubrimientosQr.collectAsState()
+                coleccionViewModel.descubrimientosQr.collectAsState()
 
                 // Recupera los videos vistos con QR.
                 val videosVistos by
-                gameViewModel.videosVistos.collectAsState()
+                coleccionViewModel.videosVistos.collectAsState()
 
                 // Recupera los videos adicionales vistos.
                 val videosAdicionalesVistos by
-                gameViewModel.videosAdicionalesVistos.collectAsState()
+                coleccionViewModel.videosAdicionalesVistos.collectAsState()
 
                 if (
                     jugadorActivoId == null ||
@@ -1377,7 +1413,7 @@ fun AppNavigation() {
                                     // Video con QR:
                                     // se registra mediante su cápsula.
                                     if (capsulaQr != null && qrDescubierto) {
-                                        gameViewModel.registrarVideoVisto(
+                                        coleccionViewModel.registrarVideoVisto(
                                             capsulaQr.id
                                         )
                                     }
@@ -1386,7 +1422,7 @@ fun AppNavigation() {
 
                                     // Video sin QR:
                                     // se registra como video adicional.
-                                    gameViewModel.registrarVideoAdministradorVisto(
+                                    coleccionViewModel.registrarVideoAdministradorVisto(
                                         video.id
                                     )
                                 }
@@ -1422,7 +1458,8 @@ fun AppNavigation() {
 
                     // Mismo perfil para los tres roles.
                     PerfilScreen(
-                        gameViewModel = gameViewModel,
+                        sessionViewModel = sessionViewModel,
+                        coleccionViewModel = coleccionViewModel,
 
                         onCerrarSesion = {
                             cerrarSesionActual()

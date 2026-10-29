@@ -1,4 +1,4 @@
-
+﻿
 package cl.triskeledu.aprendogame.ui.screens
 
 import android.graphics.BitmapFactory
@@ -35,7 +35,7 @@ import cl.triskeledu.aprendogame.R
 import cl.triskeledu.aprendogame.data.local.AppDatabase
 import cl.triskeledu.aprendogame.model.Capsula
 import cl.triskeledu.aprendogame.model.VideoRegistrado
-import cl.triskeledu.aprendogame.viewmodel.GameViewModel
+import cl.triskeledu.aprendogame.viewmodel.ColeccionViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -57,7 +57,7 @@ private data class ElementoBiblioteca(
 
 @Composable
 fun ContenidosEducativosScreen(
-    gameViewModel: GameViewModel,
+    coleccionViewModel: ColeccionViewModel,
     onVolver: () -> Unit,
     onVideoAdicionalClick: (Int) -> Unit,
     onVideoRegistradoClick: (VideoRegistrado) -> Unit,
@@ -80,19 +80,19 @@ fun ContenidosEducativosScreen(
     }.collectAsState(initial = emptyList())
 
     // Recupera las cápsulas originales y administrativas.
-    val capsulas by gameViewModel.capsulas
+    val capsulas by coleccionViewModel.capsulas
         .collectAsStateWithLifecycle()
 
     // Recupera los QR escaneados por el jugador.
-    val descubrimientos by gameViewModel.descubrimientosQr
+    val descubrimientos by coleccionViewModel.descubrimientosQr
         .collectAsStateWithLifecycle()
 
     // Recupera los videos de cápsulas terminados.
-    val vistosQr by gameViewModel.videosVistos
+    val vistosQr by coleccionViewModel.videosVistos
         .collectAsStateWithLifecycle()
 
     // Recupera los videos adicionales terminados.
-    val vistosAdicionales by gameViewModel.videosAdicionalesVistos
+    val vistosAdicionales by coleccionViewModel.videosAdicionalesVistos
         .collectAsStateWithLifecycle()
 
     // Identificadores para comprobar rápidamente el progreso.

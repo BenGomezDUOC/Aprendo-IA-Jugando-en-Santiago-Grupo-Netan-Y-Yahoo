@@ -21,7 +21,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import cl.triskeledu.aprendogame.model.Capsula
-import cl.triskeledu.aprendogame.viewmodel.GameViewModel
+import cl.triskeledu.aprendogame.viewmodel.ColeccionViewModel
 
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -45,7 +45,7 @@ import cl.triskeledu.aprendogame.R
 
 @Composable
 fun ColeccionScreen(
-    gameViewModel: GameViewModel,
+    coleccionViewModel: ColeccionViewModel,
     onCapsulaClick: (Capsula) -> Unit,
     onVideoAdicionalClick: (Int) -> Unit,
     onVideoRegistradoClick: (VideoRegistrado) -> Unit,
@@ -63,19 +63,19 @@ fun ColeccionScreen(
     }.collectAsStateWithLifecycle(initialValue = emptyList())
 
     // Cápsulas educativas registradas en Room.
-    val capsulas by gameViewModel.capsulas.collectAsStateWithLifecycle()
+    val capsulas by coleccionViewModel.capsulas.collectAsStateWithLifecycle()
 
     // Descubrimientos QR del usuario activo.
     val descubrimientos by
-    gameViewModel.descubrimientosQr.collectAsStateWithLifecycle()
+    coleccionViewModel.descubrimientosQr.collectAsStateWithLifecycle()
 
     // Videos turísticos que el usuario terminó de ver.
     val videosVistos by
-    gameViewModel.videosVistos.collectAsStateWithLifecycle()
+    coleccionViewModel.videosVistos.collectAsStateWithLifecycle()
 
     // Videos adicionales que el usuario terminó de ver.
     val videosAdicionales by
-    gameViewModel.videosAdicionalesVistos.collectAsStateWithLifecycle()
+    coleccionViewModel.videosAdicionalesVistos.collectAsStateWithLifecycle()
 
     // Pestaña seleccionada:
     // 0 = Todos, 1 = Videos, 2 = Turísticos.

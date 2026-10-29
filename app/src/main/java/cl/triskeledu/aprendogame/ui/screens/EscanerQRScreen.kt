@@ -1,4 +1,4 @@
-
+﻿
 package cl.triskeledu.aprendogame.ui.screens
 
 import android.content.Context
@@ -39,7 +39,7 @@ import cl.triskeledu.aprendogame.data.local.AppDatabase
 import cl.triskeledu.aprendogame.data.repository.GameRepositoryImpl
 import cl.triskeledu.aprendogame.model.Capsula
 import cl.triskeledu.aprendogame.model.DescubrimientoQr
-import cl.triskeledu.aprendogame.viewmodel.GameViewModel
+import cl.triskeledu.aprendogame.viewmodel.EscanerQRViewModel
 
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
@@ -53,7 +53,7 @@ import org.json.JSONObject
 
 @Composable
 fun EscanerQRScreen(
-    gameViewModel: GameViewModel,
+    escanerViewModel: EscanerQRViewModel,
     onResultadoQr: (Capsula, Int) -> Unit
 ) {
     val context = LocalContext.current
@@ -89,7 +89,7 @@ fun EscanerQRScreen(
     val procesarQr: (String) -> Unit = { textoLeido ->
 
         val codigoQr = extraerCodigoQr(textoLeido)
-        val usuarioId = gameViewModel.usuarioActivoId.value
+        val usuarioId = escanerViewModel.usuarioActivoId.value
 
         if (usuarioId == null) {
             mensaje = "Debes iniciar sesión para registrar QR."
@@ -161,7 +161,7 @@ fun EscanerQRScreen(
     // Google Code Scanner: el escáner que funcionaba.
     val iniciarEscaneo: () -> Unit = {
         if (!escaneando) {
-            val usuarioId = gameViewModel.usuarioActivoId.value
+            val usuarioId = escanerViewModel.usuarioActivoId.value
 
             if (usuarioId == null) {
                 mensaje = "Debes iniciar sesión para escanear."

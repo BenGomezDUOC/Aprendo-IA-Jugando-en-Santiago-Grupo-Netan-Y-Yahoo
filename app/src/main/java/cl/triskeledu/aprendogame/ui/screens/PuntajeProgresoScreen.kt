@@ -19,7 +19,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import cl.triskeledu.aprendogame.viewmodel.GameViewModel
+import cl.triskeledu.aprendogame.viewmodel.ColeccionViewModel
+import cl.triskeledu.aprendogame.viewmodel.SessionViewModel
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -34,17 +35,18 @@ private const val META_PUNTOS = 10000
 
 @Composable
 fun PuntajeProgresoScreen(
-    gameViewModel: GameViewModel,
+    sessionViewModel: SessionViewModel,
+    coleccionViewModel: ColeccionViewModel,
     onVolverClick: () -> Unit,
     onHistorialClick: () -> Unit
 ) {
     // Recupera los datos reales del jugador activo.
-    val usuario by gameViewModel.usuario.collectAsStateWithLifecycle()
-    val descubrimientos by gameViewModel.descubrimientosQr.collectAsStateWithLifecycle()
-    val visitas by gameViewModel.historialVisitas.collectAsStateWithLifecycle()
-    val capsulas by gameViewModel.capsulas.collectAsStateWithLifecycle()
-    val videosVistos by gameViewModel.videosVistos.collectAsStateWithLifecycle()
-    val videosAdicionales by gameViewModel.videosAdicionalesVistos.collectAsStateWithLifecycle()
+    val usuario by sessionViewModel.usuario.collectAsStateWithLifecycle()
+    val descubrimientos by coleccionViewModel.descubrimientosQr.collectAsStateWithLifecycle()
+    val visitas by sessionViewModel.historialVisitas.collectAsStateWithLifecycle()
+    val capsulas by coleccionViewModel.capsulas.collectAsStateWithLifecycle()
+    val videosVistos by coleccionViewModel.videosVistos.collectAsStateWithLifecycle()
+    val videosAdicionales by coleccionViewModel.videosAdicionalesVistos.collectAsStateWithLifecycle()
 
     // Recupera los videos y contenidos creados por el administrador.
     val context = LocalContext.current

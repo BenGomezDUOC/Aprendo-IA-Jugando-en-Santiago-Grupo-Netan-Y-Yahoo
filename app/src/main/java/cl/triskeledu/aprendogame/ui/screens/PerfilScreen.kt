@@ -1,4 +1,4 @@
-package cl.triskeledu.aprendogame.ui.screens
+﻿package cl.triskeledu.aprendogame.ui.screens
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -35,7 +35,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import cl.triskeledu.aprendogame.R
 import cl.triskeledu.aprendogame.data.local.AppDatabase
-import cl.triskeledu.aprendogame.viewmodel.GameViewModel
+import cl.triskeledu.aprendogame.viewmodel.ColeccionViewModel
+import cl.triskeledu.aprendogame.viewmodel.SessionViewModel
 
 
 import android.os.Build
@@ -47,18 +48,19 @@ import androidx.compose.animation.core.*
 
 @Composable
 fun PerfilScreen(
-    gameViewModel: GameViewModel,
+    sessionViewModel: SessionViewModel,
+    coleccionViewModel: ColeccionViewModel,
     onCerrarSesion: () -> Unit,
     onVolver: () -> Unit,
     onVerNotificaciones: () -> Unit
 ) {
-    val usuario by gameViewModel.usuario.collectAsStateWithLifecycle()
-    val qrDescubiertos by gameViewModel.qrDescubiertos.collectAsStateWithLifecycle()
-    val videosVistos by gameViewModel.videosVistos.collectAsStateWithLifecycle()
-    val historialVisitas by gameViewModel.historialVisitas.collectAsStateWithLifecycle()
-    val videosAdicionales by gameViewModel.videosAdicionalesVistos.collectAsStateWithLifecycle()
-    val descubrimientos by gameViewModel.descubrimientosQr.collectAsStateWithLifecycle()
-    val capsulas by gameViewModel.capsulas.collectAsStateWithLifecycle()
+    val usuario by sessionViewModel.usuario.collectAsStateWithLifecycle()
+    val qrDescubiertos by coleccionViewModel.qrDescubiertos.collectAsStateWithLifecycle()
+    val videosVistos by coleccionViewModel.videosVistos.collectAsStateWithLifecycle()
+    val historialVisitas by sessionViewModel.historialVisitas.collectAsStateWithLifecycle()
+    val videosAdicionales by coleccionViewModel.videosAdicionalesVistos.collectAsStateWithLifecycle()
+    val descubrimientos by coleccionViewModel.descubrimientosQr.collectAsStateWithLifecycle()
+    val capsulas by coleccionViewModel.capsulas.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     val database = remember(context) { AppDatabase.getInstance(context.applicationContext) }
@@ -552,7 +554,7 @@ fun PerfilScreen(
                         guardando = true
                         mensaje = ""
 
-                        gameViewModel.editarPerfil(
+                        sessionViewModel.editarPerfil(
                             nombre = nombre,
                             alias = alias,
                             correo = correo,
@@ -638,7 +640,7 @@ fun PerfilScreen(
                         guardando = true
                         mensaje = ""
 
-                        gameViewModel.editarPerfil(
+                        sessionViewModel.editarPerfil(
                             nombre = nombre,
                             alias = alias,
                             correo = correo,

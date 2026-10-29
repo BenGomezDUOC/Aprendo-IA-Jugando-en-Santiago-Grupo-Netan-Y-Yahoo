@@ -22,7 +22,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import cl.triskeledu.aprendogame.model.VideoRegistrado
-import cl.triskeledu.aprendogame.viewmodel.GameViewModel
+import cl.triskeledu.aprendogame.viewmodel.ColeccionViewModel
+import cl.triskeledu.aprendogame.viewmodel.MapaViewModel
+import cl.triskeledu.aprendogame.viewmodel.NotificacionesViewModel
+import cl.triskeledu.aprendogame.viewmodel.SessionViewModel
 import java.util.Locale
 
 import androidx.compose.runtime.collectAsState
@@ -37,7 +40,10 @@ private val GrisTexto = Color(0xFF64748B)
 
 @Composable
 fun DashboardScreen(
-    gameViewModel: GameViewModel,
+    sessionViewModel: SessionViewModel,
+    coleccionViewModel: ColeccionViewModel,
+    mapaViewModel: MapaViewModel,
+    notificacionesViewModel: NotificacionesViewModel,
     onMapaClick: () -> Unit,
     onEscanerClick: () -> Unit,
     onColeccionClick: () -> Unit,
@@ -49,15 +55,15 @@ fun DashboardScreen(
 ) {
     // Conservamos los parámetros de video para no romper llamadas anteriores.
     // Los videos ahora se muestran exclusivamente en ContenidosEducativosScreen.
-    val usuario by gameViewModel.usuario.collectAsStateWithLifecycle()
-    val historialVisitas by gameViewModel.historialVisitas.collectAsStateWithLifecycle()
-    val qrDescubiertos by gameViewModel.qrDescubiertos.collectAsStateWithLifecycle()
-    val capsulas by gameViewModel.capsulas.collectAsStateWithLifecycle()
-    val descubrimientos by gameViewModel.descubrimientosQr.collectAsStateWithLifecycle()
-    val videosVistos by gameViewModel.videosVistos.collectAsStateWithLifecycle()
-    val videosAdicionalesVistos by gameViewModel.videosAdicionalesVistos.collectAsStateWithLifecycle()
-    val puntosTuristicos by gameViewModel.puntos.collectAsStateWithLifecycle()
-    val notificacionesNoLeidas by gameViewModel.notificacionesNoLeidas.collectAsStateWithLifecycle()
+    val usuario by sessionViewModel.usuario.collectAsStateWithLifecycle()
+    val historialVisitas by sessionViewModel.historialVisitas.collectAsStateWithLifecycle()
+    val qrDescubiertos by coleccionViewModel.qrDescubiertos.collectAsStateWithLifecycle()
+    val capsulas by coleccionViewModel.capsulas.collectAsStateWithLifecycle()
+    val descubrimientos by coleccionViewModel.descubrimientosQr.collectAsStateWithLifecycle()
+    val videosVistos by coleccionViewModel.videosVistos.collectAsStateWithLifecycle()
+    val videosAdicionalesVistos by coleccionViewModel.videosAdicionalesVistos.collectAsStateWithLifecycle()
+    val puntosTuristicos by mapaViewModel.puntos.collectAsStateWithLifecycle()
+    val notificacionesNoLeidas by notificacionesViewModel.notificacionesNoLeidas.collectAsStateWithLifecycle()
 
     // Accedemos a Room para consultar los videos administrativos.
     val context = LocalContext.current

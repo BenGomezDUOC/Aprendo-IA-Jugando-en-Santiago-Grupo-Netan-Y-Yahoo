@@ -17,7 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import cl.triskeledu.aprendogame.model.Notificacion
-import cl.triskeledu.aprendogame.viewmodel.GameViewModel
+import cl.triskeledu.aprendogame.viewmodel.NotificacionesViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -26,12 +26,12 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NotificacionesScreen(
-    gameViewModel: GameViewModel,
+    notificacionesViewModel: NotificacionesViewModel,
     onVolver: () -> Unit,
     onAbrirDestino: (String) -> Unit
 ) {
-    val notificaciones by gameViewModel.notificaciones.collectAsState()
-    val noLeidas by gameViewModel.notificacionesNoLeidas.collectAsState()
+    val notificaciones by notificacionesViewModel.notificaciones.collectAsState()
+    val noLeidas by notificacionesViewModel.notificacionesNoLeidas.collectAsState()
 
     Scaffold(
         topBar = {
@@ -51,7 +51,7 @@ fun NotificacionesScreen(
                     if (noLeidas > 0) {
                         IconButton(
                             onClick = {
-                                gameViewModel.marcarTodasNotificacionesLeidas()
+                                notificacionesViewModel.marcarTodasNotificacionesLeidas()
                             }
                         ) {
                             Icon(
@@ -100,7 +100,7 @@ fun NotificacionesScreen(
                 Spacer(modifier = Modifier.height(20.dp))
                 FilledTonalButton(
                     onClick = {
-                        gameViewModel.enviarNotificacionPruebaLocal()
+                        notificacionesViewModel.enviarNotificacionPruebaLocal()
                     }
                 ) {
                     Icon(
@@ -129,7 +129,7 @@ fun NotificacionesScreen(
                     TarjetaNotificacion(
                         notificacion = notificacion,
                         onClick = {
-                            gameViewModel.marcarNotificacionLeida(
+                            notificacionesViewModel.marcarNotificacionLeida(
                                 notificacion.id
                             )
                             onAbrirDestino(notificacion.rutaDestino)

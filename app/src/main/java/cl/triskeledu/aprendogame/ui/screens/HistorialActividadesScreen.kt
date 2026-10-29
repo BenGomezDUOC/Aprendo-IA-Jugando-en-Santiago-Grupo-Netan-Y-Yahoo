@@ -1,4 +1,4 @@
-
+﻿
 package cl.triskeledu.aprendogame.ui.screens
 
 import androidx.compose.foundation.background
@@ -26,7 +26,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import cl.triskeledu.aprendogame.viewmodel.GameViewModel
+import cl.triskeledu.aprendogame.viewmodel.ColeccionViewModel
+import cl.triskeledu.aprendogame.viewmodel.MapaViewModel
+import cl.triskeledu.aprendogame.viewmodel.SessionViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -50,27 +52,29 @@ private data class ActividadHistorial(
 
 @Composable
 fun HistorialActividadesScreen(
-    gameViewModel: GameViewModel,
+    sessionViewModel: SessionViewModel,
+    coleccionViewModel: ColeccionViewModel,
+    mapaViewModel: MapaViewModel,
     onVolverClick: () -> Unit
 ) {
     // Registros del jugador activo, recuperados desde Room.
     val descubrimientos by
-    gameViewModel.descubrimientosQr.collectAsStateWithLifecycle()
+    coleccionViewModel.descubrimientosQr.collectAsStateWithLifecycle()
 
     val videosVistos by
-    gameViewModel.videosVistos.collectAsStateWithLifecycle()
+    coleccionViewModel.videosVistos.collectAsStateWithLifecycle()
 
     val videosAdicionales by
-    gameViewModel.videosAdicionalesVistos.collectAsStateWithLifecycle()
+    coleccionViewModel.videosAdicionalesVistos.collectAsStateWithLifecycle()
 
     val visitas by
-    gameViewModel.historialVisitas.collectAsStateWithLifecycle()
+    sessionViewModel.historialVisitas.collectAsStateWithLifecycle()
 
     val capsulas by
-    gameViewModel.capsulas.collectAsStateWithLifecycle()
+    coleccionViewModel.capsulas.collectAsStateWithLifecycle()
 
     val puntosTuristicos by
-    gameViewModel.puntos.collectAsStateWithLifecycle()
+    mapaViewModel.puntos.collectAsStateWithLifecycle()
 
     // Consulta los videos creados por el administrador.
     val context = LocalContext.current

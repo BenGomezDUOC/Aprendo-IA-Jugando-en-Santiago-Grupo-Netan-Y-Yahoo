@@ -1,4 +1,4 @@
-package cl.triskeledu.aprendogame.ui.screens
+﻿package cl.triskeledu.aprendogame.ui.screens
 
 import android.Manifest
 import android.content.Context
@@ -32,7 +32,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import cl.triskeledu.aprendogame.model.PuntoInteres
-import cl.triskeledu.aprendogame.viewmodel.GameViewModel
+import cl.triskeledu.aprendogame.viewmodel.MapaViewModel
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
@@ -43,7 +43,7 @@ import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 
 @Composable
 fun MapaScreen(
-    viewModel: GameViewModel = viewModel(),
+    viewModel: MapaViewModel = viewModel(),
     onVerDetallesClick: (PuntoInteres) -> Unit = {},
     onVolverClick: (() -> Unit)? = null
 ) {

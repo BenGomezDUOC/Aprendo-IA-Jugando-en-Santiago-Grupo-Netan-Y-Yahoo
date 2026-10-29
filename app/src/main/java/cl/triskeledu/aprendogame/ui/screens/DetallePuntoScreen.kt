@@ -1,4 +1,4 @@
-package cl.triskeledu.aprendogame.ui.screens
+﻿package cl.triskeledu.aprendogame.ui.screens
 
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -29,7 +29,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import cl.triskeledu.aprendogame.model.Rol
 import cl.triskeledu.aprendogame.ui.imagenPredeterminadaPunto
-import cl.triskeledu.aprendogame.viewmodel.GameViewModel
+import cl.triskeledu.aprendogame.viewmodel.ColeccionViewModel
+import cl.triskeledu.aprendogame.viewmodel.MapaViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.Locale
@@ -42,13 +43,14 @@ private val FondoTurismo = Color(0xFFF7F8FC)
 fun DetallePuntoScreen(
     puntoId: Int,
     rol: Rol,
-    gameViewModel: GameViewModel,
+    mapaViewModel: MapaViewModel,
+    coleccionViewModel: ColeccionViewModel,
     onVolver: () -> Unit,
     onEscanearQr: () -> Unit
 ) {
-    val puntos by gameViewModel.puntos.collectAsStateWithLifecycle()
-    val capsulas by gameViewModel.capsulas.collectAsStateWithLifecycle()
-    val descubrimientos by gameViewModel.descubrimientosQr.collectAsStateWithLifecycle()
+    val puntos by mapaViewModel.puntos.collectAsStateWithLifecycle()
+    val capsulas by mapaViewModel.capsulas.collectAsStateWithLifecycle()
+    val descubrimientos by coleccionViewModel.descubrimientosQr.collectAsStateWithLifecycle()
     val punto = puntos.firstOrNull { it.id == puntoId }
     val qrDelPunto = capsulas.filter {
         it.puntoId == puntoId && it.codigoQr.isNotBlank() &&
@@ -132,7 +134,7 @@ fun DetallePuntoScreen(
                         Text("Hito turístico", modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
                             color = AzulTurismo, style = MaterialTheme.typography.labelMedium)
                     }
-                    val distancia = gameViewModel.calcularDistanciaMetros(punto)
+                    val distancia = mapaViewModel.calcularDistanciaMetros(punto)
                     Surface(color = Color.White, shape = RoundedCornerShape(50.dp)) {
                         Row(modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
                             verticalAlignment = Alignment.CenterVertically) {
