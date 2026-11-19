@@ -1,3 +1,4 @@
+@file:Suppress("LanguageDetectionInspection")
 
 package cl.triskeledu.aprendogame.data.local
 

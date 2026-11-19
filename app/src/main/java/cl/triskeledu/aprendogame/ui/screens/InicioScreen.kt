@@ -1,4 +1,4 @@
-package cl.triskeledu.aprendogame.ui.screens
+﻿package cl.triskeledu.aprendogame.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
@@ -38,7 +38,7 @@ fun InicioScreen(
     onComenzarClick: () -> Unit,
     onCuentaClick: () -> Unit
 ) {
-    // Animación continua y suave del ícono de ubicación.
+    // AnimaciÃƒÂ³n continua y suave del ÃƒÂ­cono de ubicaciÃƒÂ³n.
     val movimiento = rememberInfiniteTransition(label = "Icono flotante")
     val desplazamiento by movimiento.animateFloat(
         initialValue = 0f,
@@ -69,13 +69,13 @@ fun InicioScreen(
         mostrarBotones = true
     }
 
-    // Detectan la pulsación de cada botón sin alterar sus acciones.
+    // Detectan la pulsaciÃƒÂ³n de cada botÃƒÂ³n sin alterar sus acciones.
     val interaccionComenzar = remember { MutableInteractionSource() }
     val comenzarPresionado by interaccionComenzar.collectIsPressedAsState()
     val escalaComenzar by animateFloatAsState(
         targetValue = if (comenzarPresionado) 0.96f else 1f,
         animationSpec = tween(120),
-        label = "Pulsación comenzar"
+        label = "PulsaciÃƒÂ³n comenzar"
     )
 
     val interaccionCuenta = remember { MutableInteractionSource() }
@@ -83,10 +83,10 @@ fun InicioScreen(
     val escalaCuenta by animateFloatAsState(
         targetValue = if (cuentaPresionada) 0.96f else 1f,
         animationSpec = tween(120),
-        label = "Pulsación cuenta"
+        label = "PulsaciÃƒÂ³n cuenta"
     )
 
-    // Animaciones continuas discretas para que se noten después de la entrada.
+    // Animaciones continuas discretas para que se noten despuÃƒÂ©s de la entrada.
     val pulsoBotones = rememberInfiniteTransition(label = "Pulso botones")
     val pulsoComenzar by pulsoBotones.animateFloat(
         initialValue = 1f,
@@ -134,7 +134,7 @@ fun InicioScreen(
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                .padding(24.dp)
+                .padding(horizontal = 20.dp, vertical = 10.dp)
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
@@ -147,13 +147,13 @@ fun InicioScreen(
             ) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.padding(top = 24.dp)
+                    modifier = Modifier.padding(top = 4.dp)
                 ) {
                     Surface(
-                        shape = RoundedCornerShape(20.dp),
+                        shape = RoundedCornerShape(16.dp),
                         color = Color(0x3338BDF8),
                         modifier = Modifier
-                            .size(68.dp)
+                            .size(50.dp)
                             .graphicsLayer { translationY = desplazamiento.dp.toPx() }
                     ) {
                         Box(contentAlignment = Alignment.Center) {
@@ -161,16 +161,16 @@ fun InicioScreen(
                                 imageVector = Icons.Default.LocationOn,
                                 contentDescription = "Logo",
                                 tint = Color(0xFF38BDF8),
-                                modifier = Modifier.size(36.dp)
+                                modifier = Modifier.size(28.dp)
                             )
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(18.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     Text(
                         text = "Aprendo IA Jugando",
-                        fontSize = 26.sp,
+                        fontSize = 22.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White,
                         textAlign = TextAlign.Center
@@ -178,30 +178,30 @@ fun InicioScreen(
 
                     Text(
                         text = "Santiago Urbano",
-                        fontSize = 18.sp,
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
                         color = Color(0xFF38BDF8),
                         textAlign = TextAlign.Center
                     )
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
 
                     Text(
                         text = "Recorre hitos culturales, escanea códigos QR y aprende sobre Inteligencia Artificial.",
-                        fontSize = 14.sp,
+                        fontSize = 11.sp,
                         color = Color(0xFFCBD5E1),
                         textAlign = TextAlign.Center,
-                        lineHeight = 20.sp,
-                        modifier = Modifier.padding(horizontal = 16.dp)
+                        lineHeight = 14.sp,
+                        modifier = Modifier.padding(horizontal = 12.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 AnimatedVisibility(
                     visible = mostrarTarjeta1,
@@ -240,7 +240,7 @@ fun InicioScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             AnimatedVisibility(
                 visible = mostrarBotones,
@@ -249,17 +249,17 @@ fun InicioScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                        .padding(bottom = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Button(
                         onClick = onComenzarClick,
                         interactionSource = interaccionComenzar,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(54.dp)
+                            .height(48.dp)
                             .scale(escalaComenzar * pulsoComenzar),
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color(0xFF2563EB)
                         ),
@@ -267,7 +267,7 @@ fun InicioScreen(
                     ) {
                         Text(
                             text = "Comenzar Aventura",
-                            fontSize = 17.sp,
+                            fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
@@ -278,9 +278,9 @@ fun InicioScreen(
                         interactionSource = interaccionCuenta,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(54.dp)
+                            .height(48.dp)
                             .scale(escalaCuenta * pulsoCuenta),
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.outlinedButtonColors(
                             containerColor = Color(0x22FFFFFF)
                         ),
@@ -292,7 +292,7 @@ fun InicioScreen(
                     ) {
                         Text(
                             text = "Ya tengo una cuenta",
-                            fontSize = 16.sp,
+                            fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = Color.White
                         )
@@ -310,7 +310,7 @@ private fun ItemBeneficio(
     titulo: String,
     subtitulo: String
 ) {
-    // Cada tarjeta respira suavemente mientras está visible.
+    // Cada tarjeta respira suavemente mientras estÃƒÂ¡ visible.
     val transicion = rememberInfiniteTransition(label = "Tarjeta $titulo")
     val escalaTarjeta by transicion.animateFloat(
         initialValue = 0.985f,
@@ -327,38 +327,38 @@ private fun ItemBeneficio(
         modifier = Modifier.fillMaxWidth().scale(escalaTarjeta)
     ) {
         Row(
-            modifier = Modifier.padding(14.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(
                 shape = RoundedCornerShape(10.dp),
                 color = colorIcono.copy(alpha = 0.2f),
-                modifier = Modifier.size(44.dp)
+                modifier = Modifier.size(36.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = icono,
                         contentDescription = null,
                         tint = colorIcono,
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.width(14.dp))
+            Spacer(modifier = Modifier.width(10.dp))
 
             Column {
                 Text(
                     text = titulo,
-                    fontSize = 15.sp,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
                 )
                 Text(
                     text = subtitulo,
-                    fontSize = 12.sp,
+                    fontSize = 11.sp,
                     color = Color(0xFF94A3B8),
-                    lineHeight = 16.sp
+                    lineHeight = 14.sp
                 )
             }
         }

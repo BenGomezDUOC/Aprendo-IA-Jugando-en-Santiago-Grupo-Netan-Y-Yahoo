@@ -64,6 +64,12 @@ dependencies {
     implementation(libs.androidx.room3.runtime)
     ksp(libs.androidx.room.compiler)
 
+    // Red y Microservicios (Retrofit + OkHttp)
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.converter.gson)
+    implementation(libs.okhttp)
+    implementation(libs.okhttp.logging.interceptor)
+
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

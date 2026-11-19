@@ -10,6 +10,8 @@ import androidx.lifecycle.viewModelScope
 import cl.triskeledu.aprendogame.data.local.AppDatabase
 import cl.triskeledu.aprendogame.data.repository.GameRepository
 import cl.triskeledu.aprendogame.data.repository.GameRepositoryImpl
+import cl.triskeledu.aprendogame.data.repository.ClimaRepository
+import cl.triskeledu.aprendogame.data.remote.dto.ClimaSantiagoInfo
 import cl.triskeledu.aprendogame.location.LocationService
 import cl.triskeledu.aprendogame.model.Capsula
 import cl.triskeledu.aprendogame.model.PuntoInteres
@@ -26,6 +28,36 @@ class MapaViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: GameRepository =
         GameRepositoryImpl(AppDatabase.getInstance(application))
+
+    private val climaRepository: ClimaRepository = ClimaRepository()
+
+    // --------------------------------------------------
+    // CLIMA EN SANTIAGO (API EXTERNA OPEN-METEO)
+    // --------------------------------------------------
+
+    private val _climaInfo = MutableStateFlow<ClimaSantiagoInfo?>(null)
+    val climaInfo: StateFlow<ClimaSantiagoInfo?> = _climaInfo.asStateFlow()
+
+    private val _cargandoClima = MutableStateFlow(false)
+    val cargandoClima: StateFlow<Boolean> = _cargandoClima.asStateFlow()
+
+    init {
+        cargarClimaSantiago()
+    }
+
+    fun cargarClimaSantiago() {
+        viewModelScope.launch {
+            _cargandoClima.value = true
+            climaRepository.obtenerClimaSantiago()
+                .onSuccess { info ->
+                    _climaInfo.value = info
+                }
+                .onFailure {
+                    // Mantiene el último valor o null sin bloquear la interfaz ni los datos locales
+                }
+            _cargandoClima.value = false
+        }
+    }
 
     // --------------------------------------------------
     // PUNTOS TURÍSTICOS

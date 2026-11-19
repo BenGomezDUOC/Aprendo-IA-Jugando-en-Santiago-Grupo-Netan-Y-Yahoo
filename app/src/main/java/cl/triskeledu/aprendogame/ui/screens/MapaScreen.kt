@@ -32,6 +32,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import cl.triskeledu.aprendogame.model.PuntoInteres
+import cl.triskeledu.aprendogame.ui.components.ClimaSantiagoCard
 import cl.triskeledu.aprendogame.viewmodel.MapaViewModel
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
@@ -51,6 +52,8 @@ fun MapaScreen(
     val puntos by viewModel.puntos.collectAsStateWithLifecycle()
     val ubicacionActual by viewModel.ubicacionActual.collectAsStateWithLifecycle()
     val puntoSeleccionado by viewModel.puntoSeleccionado.collectAsStateWithLifecycle()
+    val climaInfo by viewModel.climaInfo.collectAsStateWithLifecycle()
+    val cargandoClima by viewModel.cargandoClima.collectAsStateWithLifecycle()
 
     // Cápsulas educativas registradas en Room.
     val capsulas by viewModel.capsulas.collectAsStateWithLifecycle()
@@ -181,41 +184,50 @@ fun MapaScreen(
             shape = RoundedCornerShape(14.dp),
             elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                if (onVolverClick != null) {
-                    IconButton(onClick = onVolverClick) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Volver a la pantalla principal",
-                            tint = Color.White
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    if (onVolverClick != null) {
+                        IconButton(onClick = onVolverClick) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Volver a la pantalla principal",
+                                tint = Color.White
+                            )
+                        }
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Santiago Turístico IA",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        val completados = puntos.count { it.completado }
+                        Text(
+                            text = "${puntos.size} lugares turísticos",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFF38BDF8)
                         )
                     }
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Santiago Turístico IA",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    val completados = puntos.count { it.completado }
-                    Text(
-                        text = "${puntos.size} lugares turísticos",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF38BDF8)
+                    Icon(
+                        imageVector = Icons.Default.LocationOn,
+                        contentDescription = null,
+                        tint = Color(0xFF38BDF8),
+                        modifier = Modifier.size(24.dp)
                     )
                 }
-                Icon(
-                    imageVector = Icons.Default.LocationOn,
-                    contentDescription = null,
-                    tint = Color(0xFF38BDF8),
-                    modifier = Modifier.size(24.dp)
+
+                // Tarjeta de Clima en Vivo de Santiago (API Externa Open-Meteo)
+                ClimaSantiagoCard(
+                    climaInfo = climaInfo,
+                    cargando = cargandoClima,
+                    onRecargar = { viewModel.cargarClimaSantiago() }
                 )
             }
         }
