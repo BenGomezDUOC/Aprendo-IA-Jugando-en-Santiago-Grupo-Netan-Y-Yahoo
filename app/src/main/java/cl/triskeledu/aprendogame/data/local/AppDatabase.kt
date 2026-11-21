@@ -1,3 +1,4 @@
+
 @file:Suppress("LanguageDetectionInspection")
 
 package cl.triskeledu.aprendogame.data.local
@@ -18,6 +19,8 @@ import cl.triskeledu.aprendogame.data.local.dao.VideoVistoDao
 import cl.triskeledu.aprendogame.data.local.dao.VideoAdicionalVistoDao
 import cl.triskeledu.aprendogame.data.local.dao.VisitaDao
 import cl.triskeledu.aprendogame.data.local.dao.NotificacionDao
+import cl.triskeledu.aprendogame.data.local.dao.ContenidoEducativoDao
+import cl.triskeledu.aprendogame.data.local.dao.VideoRegistradoDao
 
 import cl.triskeledu.aprendogame.model.Capsula
 import cl.triskeledu.aprendogame.model.DescubrimientoQr
@@ -28,18 +31,11 @@ import cl.triskeledu.aprendogame.model.VideoAdicionalVisto
 import cl.triskeledu.aprendogame.model.VisitaRealizada
 import cl.triskeledu.aprendogame.model.Notificacion
 import cl.triskeledu.aprendogame.model.ContenidoEducativo
-
-import cl.triskeledu.aprendogame.data.local.dao.ContenidoEducativoDao
-
 import cl.triskeledu.aprendogame.model.VideoRegistrado
-import cl.triskeledu.aprendogame.data.local.dao.VideoRegistradoDao
 
 /**
  * Base de datos Room central de Triskeledu.
- *
- * Gestiona el almacenamiento local SQLite.
- * Conserva los usuarios y su progreso durante
- * las migraciones de la base de datos.
+ * Conserva los usuarios y su progreso.
  */
 @Database(
     entities = [
@@ -54,27 +50,27 @@ import cl.triskeledu.aprendogame.data.local.dao.VideoRegistradoDao
         ContenidoEducativo::class,
         VideoRegistrado::class
     ],
-    version = 12,
+    version = 13,
     exportSchema = false
 )
+
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun puntoInteresDao(): PuntoInteresDao
+
     abstract fun capsulaDao(): CapsulaDao
+
     abstract fun usuarioDao(): UsuarioDao
+
     abstract fun visitaDao(): VisitaDao
 
-    // DAO para los QR descubiertos.
     abstract fun descubrimientoQrDao(): DescubrimientoQrDao
 
-    // DAO para los videos turísticos vistos.
     abstract fun videoVistoDao(): VideoVistoDao
 
-    // DAO para los dos videos educativos adicionales.
     abstract fun videoAdicionalVistoDao(): VideoAdicionalVistoDao
 
-    // DAO para gestionar las notificaciones.
     abstract fun notificacionDao(): NotificacionDao
 
     abstract fun contenidoEducativoDao(): ContenidoEducativoDao
@@ -86,14 +82,8 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
-        // -----------------------------------------
         // MIGRACIÓN 1 -> 2
-        // -----------------------------------------
 
-        /**
-         * Agrega los campos del registro
-         * sin borrar los usuarios existentes.
-         */
         private val MIGRATION_1_2 = object : Migration(1, 2) {
 
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -124,19 +114,12 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        // -----------------------------------------
         // MIGRACIÓN 2 -> 3
-        // -----------------------------------------
 
-        /**
-         * Impide correos duplicados
-         * sin eliminar los jugadores.
-         */
         private val MIGRATION_2_3 = object : Migration(2, 3) {
 
             override fun migrate(db: SupportSQLiteDatabase) {
 
-                // Comprueba si existen correos repetidos.
                 db.query(
                     """
                     SELECT correo, COUNT(*) AS cantidad
@@ -147,6 +130,7 @@ abstract class AppDatabase : RoomDatabase() {
                 ).use { cursor ->
 
                     if (cursor.moveToFirst()) {
+
                         throw IllegalStateException(
                             "Existen correos duplicados. " +
                                     "Debemos revisarlos antes de crear el índice único."
@@ -154,7 +138,6 @@ abstract class AppDatabase : RoomDatabase() {
                     }
                 }
 
-                // Crea el índice único del correo.
                 db.execSQL(
                     """
                     CREATE UNIQUE INDEX IF NOT EXISTS
@@ -165,21 +148,12 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        // -----------------------------------------
         // MIGRACIÓN 3 -> 4
-        // -----------------------------------------
 
-        /**
-         * Crea las tablas para registrar los QR
-         * descubiertos y los videos vistos.
-         *
-         * No elimina las tablas existentes.
-         */
         private val MIGRATION_3_4 = object : Migration(3, 4) {
 
             override fun migrate(db: SupportSQLiteDatabase) {
 
-                // 1. Tabla de descubrimientos QR.
                 db.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS `descubrimientos_qr` (
@@ -197,7 +171,6 @@ abstract class AppDatabase : RoomDatabase() {
                     """.trimIndent()
                 )
 
-                // Índice por usuario.
                 db.execSQL(
                     """
                     CREATE INDEX IF NOT EXISTS
@@ -206,7 +179,6 @@ abstract class AppDatabase : RoomDatabase() {
                     """.trimIndent()
                 )
 
-                // Índice por cápsula.
                 db.execSQL(
                     """
                     CREATE INDEX IF NOT EXISTS
@@ -215,7 +187,6 @@ abstract class AppDatabase : RoomDatabase() {
                     """.trimIndent()
                 )
 
-                // Evita registrar dos veces la misma cápsula.
                 db.execSQL(
                     """
                     CREATE UNIQUE INDEX IF NOT EXISTS
@@ -224,7 +195,6 @@ abstract class AppDatabase : RoomDatabase() {
                     """.trimIndent()
                 )
 
-                // 2. Tabla de videos vistos.
                 db.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS `videos_vistos` (
@@ -242,7 +212,6 @@ abstract class AppDatabase : RoomDatabase() {
                     """.trimIndent()
                 )
 
-                // Índice por usuario.
                 db.execSQL(
                     """
                     CREATE INDEX IF NOT EXISTS
@@ -251,7 +220,6 @@ abstract class AppDatabase : RoomDatabase() {
                     """.trimIndent()
                 )
 
-                // Índice por cápsula.
                 db.execSQL(
                     """
                     CREATE INDEX IF NOT EXISTS
@@ -260,7 +228,6 @@ abstract class AppDatabase : RoomDatabase() {
                     """.trimIndent()
                 )
 
-                // Evita registrar dos veces el mismo video.
                 db.execSQL(
                     """
                     CREATE UNIQUE INDEX IF NOT EXISTS
@@ -271,22 +238,12 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        // -----------------------------------------
         // MIGRACIÓN 4 -> 5
-        // -----------------------------------------
 
-        /**
-         * Agrega un identificador permanente para
-         * las cuentas predefinidas de Triskeledu.
-         *
-         * No elimina usuarios ni su progreso.
-         */
         private val MIGRATION_4_5 = object : Migration(4, 5) {
 
             override fun migrate(db: SupportSQLiteDatabase) {
 
-                // 1. Agrega la nueva columna.
-                // Los usuarios normales tendrán null.
                 db.execSQL(
                     """
                     ALTER TABLE usuarios
@@ -294,7 +251,6 @@ abstract class AppDatabase : RoomDatabase() {
                     """.trimIndent()
                 )
 
-                // 2. Identifica al administrador inicial.
                 db.execSQL(
                     """
                     UPDATE usuarios
@@ -304,7 +260,6 @@ abstract class AppDatabase : RoomDatabase() {
                     """.trimIndent()
                 )
 
-                // 3. Identifica al generador inicial.
                 db.execSQL(
                     """
                     UPDATE usuarios
@@ -314,7 +269,6 @@ abstract class AppDatabase : RoomDatabase() {
                     """.trimIndent()
                 )
 
-                // 4. Evita duplicar identificadores de sistema.
                 db.execSQL(
                     """
                     CREATE UNIQUE INDEX IF NOT EXISTS
@@ -325,22 +279,12 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        // -----------------------------------------
         // MIGRACIÓN 5 -> 6
-        // -----------------------------------------
 
-        /**
-         * Crea la tabla de notificaciones.
-         *
-         * Cada notificación pertenece a un usuario.
-         * No elimina usuarios, puntos, cápsulas
-         * ni registros de progreso existentes.
-         */
         private val MIGRATION_5_6 = object : Migration(5, 6) {
 
             override fun migrate(db: SupportSQLiteDatabase) {
 
-                // Crea la tabla de notificaciones.
                 db.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS `notificaciones` (
@@ -359,7 +303,6 @@ abstract class AppDatabase : RoomDatabase() {
                     """.trimIndent()
                 )
 
-                // Índice para consultar por usuario.
                 db.execSQL(
                     """
                     CREATE INDEX IF NOT EXISTS
@@ -370,22 +313,12 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        // -----------------------------------------
         // MIGRACIÓN 6 -> 7
-        // -----------------------------------------
 
-        /**
-         * Agrega el registro de los dos videos
-         * educativos adicionales.
-         *
-         * No modifica las tablas existentes.
-         * No elimina usuarios ni su progreso.
-         */
         private val MIGRATION_6_7 = object : Migration(6, 7) {
 
             override fun migrate(db: SupportSQLiteDatabase) {
 
-                // Crea la tabla de videos adicionales vistos.
                 db.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS `videos_adicionales_vistos` (
@@ -400,7 +333,6 @@ abstract class AppDatabase : RoomDatabase() {
                     """.trimIndent()
                 )
 
-                // Índice para consultar por usuario.
                 db.execSQL(
                     """
                     CREATE INDEX IF NOT EXISTS
@@ -409,8 +341,6 @@ abstract class AppDatabase : RoomDatabase() {
                     """.trimIndent()
                 )
 
-                // Evita registrar varias veces el mismo
-                // video adicional para un mismo usuario.
                 db.execSQL(
                     """
                     CREATE UNIQUE INDEX IF NOT EXISTS
@@ -422,16 +352,12 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-
-        // -----------------------------------------
         // MIGRACIÓN 7 -> 8
-        // -----------------------------------------
 
         private val MIGRATION_7_8 = object : Migration(7, 8) {
 
             override fun migrate(db: SupportSQLiteDatabase) {
 
-                // 1. Agrega clasificación a las cápsulas.
                 db.execSQL(
                     """
                     ALTER TABLE capsulas
@@ -439,7 +365,6 @@ abstract class AppDatabase : RoomDatabase() {
                     """.trimIndent()
                 )
 
-                // 2. Agrega el estado de publicación.
                 db.execSQL(
                     """
                     ALTER TABLE capsulas
@@ -447,7 +372,6 @@ abstract class AppDatabase : RoomDatabase() {
                     """.trimIndent()
                 )
 
-                // 3. Crea los contenidos del Generador.
                 db.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS `contenidos_educativos` (
@@ -465,7 +389,6 @@ abstract class AppDatabase : RoomDatabase() {
                     """.trimIndent()
                 )
 
-                // 4. Índice de puntos turísticos.
                 db.execSQL(
                     """
                     CREATE INDEX IF NOT EXISTS
@@ -474,7 +397,6 @@ abstract class AppDatabase : RoomDatabase() {
                     """.trimIndent()
                 )
 
-                // 5. Crea la tabla de videos del Administrador.
                 db.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS `videos_registrados` (
@@ -491,7 +413,6 @@ abstract class AppDatabase : RoomDatabase() {
                     """.trimIndent()
                 )
 
-                // 6. Índice para relacionar videos y contenidos.
                 db.execSQL(
                     """
                     CREATE INDEX IF NOT EXISTS
@@ -499,21 +420,15 @@ abstract class AppDatabase : RoomDatabase() {
                     ON `videos_registrados` (`contenidoId`)
                     """.trimIndent()
                 )
-
             }
         }
 
-
-        // -----------------------------------------
         // MIGRACIÓN 8 -> 9
-        // -----------------------------------------
 
         private val MIGRATION_8_9 = object : Migration(8, 9) {
 
             override fun migrate(db: SupportSQLiteDatabase) {
 
-                // Agrega el QR a los contenidos del Generador.
-                // Los contenidos existentes quedan sin QR asignado.
                 db.execSQL(
                     """
                     ALTER TABLE contenidos_educativos
@@ -521,7 +436,6 @@ abstract class AppDatabase : RoomDatabase() {
                     """.trimIndent()
                 )
 
-                // Evita que dos contenidos tengan el mismo QR.
                 db.execSQL(
                     """
                     CREATE UNIQUE INDEX IF NOT EXISTS
@@ -532,17 +446,12 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-
-        // -----------------------------------------
         // MIGRACIÓN 9 -> 10
-        // -----------------------------------------
 
         private val MIGRATION_9_10 = object : Migration(9, 10) {
 
             override fun migrate(db: SupportSQLiteDatabase) {
 
-                // Autor del video.
-                // Conserva los videos ya registrados.
                 db.execSQL(
                     """
                     ALTER TABLE videos_registrados
@@ -550,7 +459,6 @@ abstract class AppDatabase : RoomDatabase() {
                     """.trimIndent()
                 )
 
-                // Duración en milisegundos.
                 db.execSQL(
                     """
                     ALTER TABLE videos_registrados
@@ -560,79 +468,95 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // MIGRACIÓN 10 -> 11
 
         private val MIGRATION_10_11 = object : Migration(10, 11) {
 
             override fun migrate(db: SupportSQLiteDatabase) {
+
                 db.execSQL(
                     """
-            ALTER TABLE videos_registrados
-            ADD COLUMN urlMiniatura TEXT NOT NULL DEFAULT ''
-            """.trimIndent()
+                    ALTER TABLE videos_registrados
+                    ADD COLUMN urlMiniatura TEXT NOT NULL DEFAULT ''
+                    """.trimIndent()
                 )
             }
         }
 
-        // -----------------------------------------
         // MIGRACIÓN 11 -> 12
-        // -----------------------------------------
 
         private val MIGRATION_11_12 = object : Migration(11, 12) {
 
             override fun migrate(db: SupportSQLiteDatabase) {
 
-                // Agrega una columna para guardar la fotografía
-                // de cada punto turístico sin eliminar sus datos.
                 db.execSQL(
-                    "ALTER TABLE puntos_interes ADD COLUMN imagenUri TEXT DEFAULT NULL"
+                    """
+                    ALTER TABLE puntos_interes
+                    ADD COLUMN imagenUri TEXT DEFAULT NULL
+                    """.trimIndent()
                 )
             }
         }
 
+        // =============================================
+        // NUEVA MIGRACIÓN 12 -> 13
+        // =============================================
 
-        // -----------------------------------------
-        // INSTANCIA DE LA BASE DE DATOS
-        // -----------------------------------------
+        // Agrega la dirección de cada punto turístico.
+        // Conserva todos los registros existentes.
 
-        /**
-         * Obtiene una única instancia de Room.
-         */
+        private val MIGRATION_12_13 = object : Migration(12, 13) {
+
+            override fun migrate(db: SupportSQLiteDatabase) {
+
+                db.execSQL(
+                    """
+                    ALTER TABLE puntos_interes
+                    ADD COLUMN direccion TEXT NOT NULL DEFAULT ''
+                    """.trimIndent()
+                )
+            }
+        }
+
+        // =============================================
+        // INSTANCIA DE ROOM
+        // =============================================
+
         fun getInstance(context: Context): AppDatabase {
 
             return INSTANCE ?: synchronized(this) {
 
-                val instance = Room.databaseBuilder(
+                INSTANCE ?: Room.databaseBuilder(
+
                     context.applicationContext,
+
                     AppDatabase::class.java,
+
                     "aprendo_santiago_database"
-                )
 
-                    .addMigrations(
-                        MIGRATION_1_2,
-                        MIGRATION_2_3,
-                        MIGRATION_3_4,
-                        MIGRATION_4_5,
-                        MIGRATION_5_6,
-                        MIGRATION_6_7,
-                        MIGRATION_7_8,
-                        MIGRATION_8_9,
-                        MIGRATION_9_10,
-                        MIGRATION_10_11,
-                        MIGRATION_11_12
-                    )
+                ).addMigrations(
 
-                    .build()
+                    MIGRATION_1_2,
+                    MIGRATION_2_3,
+                    MIGRATION_3_4,
+                    MIGRATION_4_5,
+                    MIGRATION_5_6,
+                    MIGRATION_6_7,
+                    MIGRATION_7_8,
+                    MIGRATION_8_9,
+                    MIGRATION_9_10,
+                    MIGRATION_10_11,
+                    MIGRATION_11_12,
+                    MIGRATION_12_13
 
-                INSTANCE = instance
+                ).build().also { instance ->
 
-                // Carga los lugares y cápsulas que falten.
-                DatabaseSeeder.seedDatabase(instance)
+                    INSTANCE = instance
 
-                instance
+                    // Carga los registros iniciales faltantes.
+                    DatabaseSeeder.seedDatabase(instance)
+                }
             }
         }
     }
 }
-
-
-

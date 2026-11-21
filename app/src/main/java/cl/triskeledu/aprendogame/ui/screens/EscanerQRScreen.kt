@@ -1,39 +1,51 @@
 ﻿
 package cl.triskeledu.aprendogame.ui.screens
 
-import android.content.Context
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.provider.Settings
 import android.util.Log
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.FlashlightOn
-import androidx.compose.material.icons.filled.PhotoLibrary
-import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
-
 import androidx.compose.runtime.*
-
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 
 import cl.triskeledu.aprendogame.data.local.AppDatabase
 import cl.triskeledu.aprendogame.data.repository.GameRepositoryImpl
@@ -41,433 +53,1270 @@ import cl.triskeledu.aprendogame.model.Capsula
 import cl.triskeledu.aprendogame.model.DescubrimientoQr
 import cl.triskeledu.aprendogame.viewmodel.EscanerQRViewModel
 
-import com.google.mlkit.vision.barcode.common.Barcode
-import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
-import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
+import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
+
+
+// =====================================================
+// TIPOS DE ERROR DEL ESCÁNER
+// =====================================================
+
+private enum class TipoErrorQr {
+    NO_VALIDO,
+    NO_PUBLICADO,
+    OTRO_PUNTO
+}
+
+
+// =====================================================
+// PANTALLA PRINCIPAL DEL ESCÁNER QR
+// =====================================================
 
 @Composable
 fun EscanerQRScreen(
     escanerViewModel: EscanerQRViewModel,
-    onResultadoQr: (Capsula, Int) -> Unit
+    onResultadoQr: (Capsula, Int) -> Unit,
+    puntoIdEsperado: Int? = null,
+    onVolverMapa: () -> Unit = {}
 ) {
+
     val context = LocalContext.current
-    val abrirEnlace = LocalUriHandler.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
 
-    // Reutilizamos Room y el repositorio del proyecto.
     val repository = remember(context) {
         GameRepositoryImpl(
             AppDatabase.getInstance(context.applicationContext)
         )
     }
 
+    // Avisos generales del escáner.
+    val snackbarHostState = remember { SnackbarHostState() }
+
     var mensaje by remember {
-        mutableStateOf(
-            "Se detectará automáticamente el código QR"
-        )
+        mutableStateOf("")
     }
 
-    var escaneando by remember {
+    // Comprueba el permiso real de Android.
+    fun tienePermiso(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    var permisoCamara by remember {
+        mutableStateOf(tienePermiso())
+    }
+
+    var mostrarDialogoPermiso by remember {
         mutableStateOf(false)
     }
 
-    var capsulaEncontrada by remember {
-        mutableStateOf<Capsula?>(null)
+    var solicitudEnCurso by remember {
+        mutableStateOf(false)
     }
 
-    var puntosGanados by remember {
-        mutableIntStateOf(0)
+    var permisoSolicitadoAntes by rememberSaveable {
+        mutableStateOf(false)
     }
 
-    // Procesa el contenido que entrega el escáner.
+    // Evita procesar varios QR simultáneamente.
+    val qrBloqueado = remember {
+        AtomicBoolean(false)
+    }
+
+    // Evita navegar varias veces al resultado.
+    val resultadoEncontrado = remember {
+        AtomicBoolean(false)
+    }
+
+    // Controla las ventanas de error.
+    var errorQr by remember {
+        mutableStateOf<TipoErrorQr?>(null)
+    }
+
+    // Nombre del punto turístico seleccionado.
+    var nombrePunto by remember(puntoIdEsperado) {
+        mutableStateOf("")
+    }
+
+    // Evita volver a detectar inmediatamente un QR rechazado.
+    val qrRechazado = remember {
+        AtomicReference<String?>(null)
+    }
+
+    val fotogramasSinQr = remember {
+        AtomicInteger(0)
+    }
+
+    // Recupera el nombre del punto turístico seleccionado.
+    LaunchedEffect(puntoIdEsperado) {
+
+        nombrePunto = puntoIdEsperado?.let { id ->
+
+            try {
+                repository.getPuntoPorId(id)?.nombre
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Log.e(
+                    "TriskeleduQR",
+                    "Error al obtener el punto turístico",
+                    error
+                )
+                null
+            }
+
+        }.orEmpty()
+    }
+
+    // Muestra únicamente avisos generales.
+    LaunchedEffect(mensaje) {
+
+        if (mensaje.isNotBlank()) {
+
+            snackbarHostState.showSnackbar(
+                message = mensaje,
+                duration = SnackbarDuration.Short
+            )
+
+            mensaje = ""
+        }
+    }
+
+
+    // -------------------------------------------------
+    // PERMISOS DE CÁMARA
+    // -------------------------------------------------
+
+    val solicitarPermiso = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { concedido ->
+
+        solicitudEnCurso = false
+        permisoCamara = concedido
+
+        // El aviso personalizado aparece después
+        // de responder a la solicitud oficial de Android.
+        mostrarDialogoPermiso = !concedido
+    }
+
+    LaunchedEffect(Unit) {
+
+        if (!tienePermiso() && !permisoSolicitadoAntes) {
+
+            permisoSolicitadoAntes = true
+            solicitudEnCurso = true
+
+            solicitarPermiso.launch(
+                Manifest.permission.CAMERA
+            )
+
+        } else if (!tienePermiso()) {
+
+            mostrarDialogoPermiso = true
+        }
+    }
+
+    // Comprueba el permiso al regresar desde Ajustes.
+    DisposableEffect(lifecycleOwner, context) {
+
+        val observador = LifecycleEventObserver { _, evento ->
+
+            if (evento == Lifecycle.Event.ON_RESUME) {
+
+                val concedido = tienePermiso()
+
+                permisoCamara = concedido
+
+                mostrarDialogoPermiso =
+                    !concedido &&
+                            permisoSolicitadoAntes &&
+                            !solicitudEnCurso
+            }
+        }
+
+        lifecycleOwner.lifecycle.addObserver(observador)
+
+        onDispose {
+
+            lifecycleOwner.lifecycle.removeObserver(observador)
+        }
+    }
+
+    // Abre los ajustes de Android de esta aplicación.
+    val abrirAjustes: () -> Unit = {
+
+        val intent = Intent(
+            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.parse("package:${context.packageName}")
+        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+        context.startActivity(intent)
+    }
+
+
+    // -------------------------------------------------
+    // MOSTRAR ERROR Y PAUSAR EL ESCANEO
+    // -------------------------------------------------
+
+    fun mostrarErrorQr(
+        tipoError: TipoErrorQr,
+        textoLeido: String
+    ) {
+
+        // Mantiene bloqueado el procesamiento mientras
+        // la ventana de error permanece visible.
+        qrBloqueado.set(true)
+
+        qrRechazado.set(
+            extraerCodigoQr(textoLeido)
+        )
+
+        fotogramasSinQr.set(0)
+
+        mensaje = ""
+        snackbarHostState.currentSnackbarData?.dismiss()
+
+        errorQr = tipoError
+    }
+
+
+    // -------------------------------------------------
+    // VALIDACIÓN Y PROCESAMIENTO DEL QR
+    // -------------------------------------------------
+
     val procesarQr: (String) -> Unit = { textoLeido ->
 
         val codigoQr = extraerCodigoQr(textoLeido)
+
         val usuarioId = escanerViewModel.usuarioActivoId.value
 
-        if (usuarioId == null) {
-            mensaje = "Debes iniciar sesión para registrar QR."
-            escaneando = false
+        when {
 
-        } else if (codigoQr.isBlank()) {
-            mensaje = "No se pudo leer el contenido del QR."
-            escaneando = false
+            usuarioId == null -> {
 
-        } else {
-            scope.launch {
-                try {
-                    // 1. Buscar la cápsula en Room.
-                    val capsula = repository.validarQr(codigoQr)
+                mensaje =
+                    "Debes iniciar sesión para registrar QR."
 
-                    if (capsula == null) {
-                        capsulaEncontrada = null
-                        puntosGanados = 0
-                        mensaje = "Este QR no pertenece a Triskeledu."
+                qrBloqueado.set(false)
+            }
 
-                    } else {
-                        // 2. Registrar el descubrimiento.
-                        val resultado =
-                            repository.registrarDescubrimientoQr(
-                                DescubrimientoQr(
-                                    usuarioId = usuarioId,
-                                    capsulaId = capsula.id,
-                                    fechaTimestamp =
-                                        System.currentTimeMillis()
+            codigoQr.isBlank() -> {
+
+                mostrarErrorQr(
+                    TipoErrorQr.NO_VALIDO,
+                    textoLeido
+                )
+            }
+
+            else -> {
+
+                scope.launch {
+
+                    try {
+
+                        // Busca el QR en Room.
+                        // Incluye los QR nuevos del administrador.
+                        val capsula = repository.validarQr(codigoQr)
+
+                        when {
+
+                            // VALIDACIÓN 1:
+                            // El QR debe existir en Triskeledu.
+                            capsula == null -> {
+
+                                mostrarErrorQr(
+                                    TipoErrorQr.NO_VALIDO,
+                                    textoLeido
                                 )
-                            )
+                            }
 
-                        // 3. Mostrar la cápsula.
-                        capsulaEncontrada = capsula
+                            // VALIDACIÓN 2:
+                            // La cápsula debe estar publicada.
+                            !capsula.estado.equals(
+                                "PUBLICADA",
+                                ignoreCase = true
+                            ) -> {
 
-                        if (resultado == -1L) {
-                            puntosGanados = 0
-                            mensaje =
-                                "Ya habías descubierto este QR. No se suman puntos nuevamente."
-                        } else {
-                            puntosGanados = 10
-                            mensaje =
-                                "¡QR descubierto! Ganaste 10 puntos."
-                        }
+                                mostrarErrorQr(
+                                    TipoErrorQr.NO_PUBLICADO,
+                                    textoLeido
+                                )
+                            }
 
-                        // Abre la pantalla 8 con la cápsula y los puntos reales.
-                        onResultadoQr(capsula, puntosGanados)
+                            // VALIDACIÓN 3:
+                            // Si viene desde el mapa, el QR
+                            // debe pertenecer al punto seleccionado.
+                            puntoIdEsperado != null &&
+                                    capsula.puntoId != puntoIdEsperado -> {
 
+                                mostrarErrorQr(
+                                    TipoErrorQr.OTRO_PUNTO,
+                                    textoLeido
+                                )
+                            }
 
-                    }
+                            // VALIDACIÓN CORRECTA.
+                            else -> {
 
-                } catch (error: Exception) {
-                    Log.e(
-                        "TriskeleduQR",
-                        "Error al registrar QR",
-                        error
-                    )
+                                // Registra el descubrimiento.
+                                val resultado =
+                                    repository.registrarDescubrimientoQr(
+                                        DescubrimientoQr(
+                                            usuarioId = usuarioId,
+                                            capsulaId = capsula.id,
+                                            fechaTimestamp =
+                                                System.currentTimeMillis()
+                                        )
+                                    )
 
-                    mensaje =
-                        "No se pudo registrar el QR: ${error.message}"
+                                // 10 puntos solamente si el QR
+                                // se descubre por primera vez.
+                                val puntosGanados =
+                                    if (resultado == -1L) 0 else 10
 
-                } finally {
-                    escaneando = false
-                }
-            }
-        }
-    }
+                                resultadoEncontrado.set(true)
 
-    // Google Code Scanner: el escáner que funcionaba.
-    val iniciarEscaneo: () -> Unit = {
-        if (!escaneando) {
-            val usuarioId = escanerViewModel.usuarioActivoId.value
-
-            if (usuarioId == null) {
-                mensaje = "Debes iniciar sesión para escanear."
-
-            } else {
-                escaneando = true
-                capsulaEncontrada = null
-                puntosGanados = 0
-                mensaje = "Apunta la cámara al código QR."
-
-                val opciones = GmsBarcodeScannerOptions.Builder()
-                    .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
-                    .build()
-
-                GmsBarcodeScanning
-                    .getClient(context, opciones)
-                    .startScan()
-                    .addOnSuccessListener { codigo ->
-                        procesarQr(codigo.rawValue.orEmpty())
-                    }
-                    .addOnCanceledListener {
-                        mensaje = "Escaneo cancelado."
-                        escaneando = false
-                    }
-                    .addOnFailureListener { error ->
-                        mensaje =
-                            "No se pudo escanear: ${error.message}"
-                        escaneando = false
-                    }
-            }
-        }
-    }
-
-    // Galería: permite analizar un QR desde una imagen.
-    val seleccionarImagen =
-        rememberLauncherForActivityResult(
-            ActivityResultContracts.GetContent()
-        ) { uri: Uri? ->
-
-            if (uri == null) {
-                mensaje = "Selección cancelada."
-                escaneando = false
-
-            } else {
-                escaneando = true
-                mensaje = "Analizando imagen..."
-
-                val opciones = BarcodeScannerOptions.Builder()
-                    .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
-                    .build()
-
-                val lector = BarcodeScanning.getClient(opciones)
-
-                try {
-                    val imagen =
-                        InputImage.fromFilePath(context, uri)
-
-                    lector.process(imagen)
-                        .addOnSuccessListener { codigos ->
-                            val texto = codigos
-                                .firstOrNull {
-                                    !it.rawValue.isNullOrBlank()
-                                }
-                                ?.rawValue
-
-                            if (texto.isNullOrBlank()) {
-                                mensaje =
-                                    "La imagen no contiene un QR reconocible."
-                                escaneando = false
-                            } else {
-                                procesarQr(texto)
+                                // Abre la pantalla de resultado
+                                // únicamente si el QR es válido.
+                                onResultadoQr(
+                                    capsula,
+                                    puntosGanados
+                                )
                             }
                         }
-                        .addOnFailureListener { error ->
-                            mensaje =
-                                "Error al analizar imagen: ${error.message}"
-                            escaneando = false
-                        }
-                        .addOnCompleteListener {
-                            lector.close()
-                        }
 
-                } catch (error: Exception) {
-                    lector.close()
-                    mensaje =
-                        "No se pudo abrir la imagen: ${error.message}"
-                    escaneando = false
+                    } catch (error: CancellationException) {
+
+                        throw error
+
+                    } catch (error: Exception) {
+
+                        Log.e(
+                            "TriskeleduQR",
+                            "Error al registrar QR",
+                            error
+                        )
+
+                        mensaje =
+                            "No se pudo registrar el QR: ${error.message}"
+
+                        qrBloqueado.set(false)
+                    }
                 }
             }
         }
+    }
 
-    // Interfaz de la pantalla 7.
-    Column(
+
+    // -------------------------------------------------
+    // INTERFAZ PRINCIPAL
+    // -------------------------------------------------
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .background(Color(0xFF29292B))
     ) {
 
-        Text(
-            text = "Escanea el código QR",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold
-        )
+        // Cámara automática si existe permiso.
+        if (permisoCamara && errorQr == null) {
 
-        Text(
-            text = "Apunta la cámara al código QR del punto",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-
-        // Recuadro con el estilo de la referencia.
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(350.dp)
-                .clickable(
-                    enabled = !escaneando,
-                    onClick = iniciarEscaneo
-                ),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = Color(0xFF172D44)
-            )
-        ) {
-            Box(
+            CamaraQrEnVivo(
                 modifier = Modifier.fillMaxSize(),
+                lifecycleOwner = lifecycleOwner,
+                qrBloqueado = qrBloqueado,
+                resultadoEncontrado = resultadoEncontrado,
+                qrRechazado = qrRechazado,
+                fotogramasSinQr = fotogramasSinQr,
+                onQrDetectado = procesarQr,
+                onError = { error ->
+
+                    mensaje = error
+                }
+            )
+
+            // Cuatro esquinas blancas del escáner.
+            MarcoEscaneoQr(
+                modifier = Modifier
+                    .size(230.dp)
+                    .align(Alignment.Center)
+            )
+        }
+
+        // Ventana personalizada de permiso de cámara.
+        if (
+            !permisoCamara &&
+            mostrarDialogoPermiso &&
+            !solicitudEnCurso
+        ) {
+
+            VentanaPermisoCamara(
+                modifier = Modifier.fillMaxSize(),
+                onAbrirAjustes = abrirAjustes
+            )
+        }
+
+        // Ventanas de error del código QR.
+        errorQr?.let { error ->
+
+            if (permisoCamara) {
+
+                VentanaErrorQr(
+                    modifier = Modifier.fillMaxSize(),
+                    error = error,
+                    nombrePunto = nombrePunto,
+
+                    onReintentar = {
+
+                        // Cierra la ventana y reactiva la cámara.
+                        // Conserva el QR rechazado para evitar
+                        // que vuelva a detectarse inmediatamente.
+                        fotogramasSinQr.set(0)
+                        qrBloqueado.set(false)
+                        errorQr = null
+                    },
+
+                    onVolverMapa = onVolverMapa
+                )
+            }
+        }
+
+        // Mensajes flotantes para errores generales.
+        if (errorQr == null) {
+
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(
+                        start = 16.dp,
+                        end = 16.dp,
+                        bottom = 20.dp
+                    )
+            ) { data ->
+
+                Snackbar(
+                    snackbarData = data,
+                    shape = RoundedCornerShape(16.dp),
+                    containerColor = Color(0xFF263746),
+                    contentColor = Color.White
+                )
+            }
+        }
+    }
+}
+
+
+// =====================================================
+// VENTANA DE PERMISO DE CÁMARA
+// =====================================================
+
+@Composable
+private fun VentanaPermisoCamara(
+    modifier: Modifier = Modifier,
+    onAbrirAjustes: () -> Unit
+) {
+
+    Box(
+        modifier = modifier
+            .background(Color(0xFF29292B))
+            .padding(horizontal = 22.dp),
+        contentAlignment = Alignment.Center
+    ) {
+
+        Column(
+            modifier = Modifier
+                .widthIn(max = 380.dp)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .background(
+                    color = Color(0xFF0D0D0F),
+                    shape = RoundedCornerShape(24.dp)
+                )
+                .padding(
+                    horizontal = 22.dp,
+                    vertical = 28.dp
+                ),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+
+            IconoCamaraDesactivada(
+                modifier = Modifier.size(54.dp)
+            )
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            Text(
+                text = "Permiso de cámara necesario",
+                color = Color.White,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                lineHeight = 29.sp,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(22.dp))
+
+            Text(
+                text = "Para escanear códigos QR, necesitas permitir el acceso a la cámara.",
+                color = Color.White,
+                fontSize = 16.sp,
+                lineHeight = 24.sp,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(22.dp))
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        color = Color(0xFF2C2C2F),
+                        shape = RoundedCornerShape(18.dp)
+                    )
+                    .padding(
+                        horizontal = 16.dp,
+                        vertical = 20.dp
+                    ),
                 contentAlignment = Alignment.Center
             ) {
 
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement =
-                        Arrangement.spacedBy(12.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.QrCodeScanner,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(65.dp)
-                    )
-
-                    Text(
-                        text = if (escaneando) {
-                            "Procesando QR..."
-                        } else {
-                            "TOCA AQUÍ PARA ESCANEAR"
-                        },
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center
-                    )
-
-                    Text(
-                        text = "Se abrirá la cámara para leer el código",
-                        color = Color.White.copy(alpha = 0.8f),
-                        style = MaterialTheme.typography.bodySmall,
-                        textAlign = TextAlign.Center
-                    )
-                }
-
-                MarcoEscaneoQr(
-                    modifier = Modifier.size(230.dp)
-                )
-            }
-        }
-
-        // Controles visuales y galería.
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-
-            // Google Code Scanner controla la linterna
-            // desde su propia interfaz de cámara.
-            OutlinedButton(
-                onClick = iniciarEscaneo,
-                enabled = !escaneando,
-                modifier = Modifier.weight(1f)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.FlashlightOn,
-                    contentDescription = null
-                )
-
-                Spacer(Modifier.width(6.dp))
-                Text("Cámara")
-            }
-
-            OutlinedButton(
-                onClick = {
-                    seleccionarImagen.launch("image/*")
-                },
-                enabled = !escaneando,
-                modifier = Modifier.weight(1f)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.PhotoLibrary,
-                    contentDescription = null
-                )
-
-                Spacer(Modifier.width(6.dp))
-                Text("Galería")
-            }
-        }
-
-        // Mensaje de estado.
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor =
-                    MaterialTheme.colorScheme.surfaceVariant
-            )
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement =
-                    Arrangement.spacedBy(8.dp)
-            ) {
                 Text(
-                    text = mensaje,
-                    fontWeight = FontWeight.Medium
+                    text = "Puedes activar el permiso desde los ajustes de la aplicación.",
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    lineHeight = 24.sp,
+                    textAlign = TextAlign.Center
                 )
+            }
 
-                if (escaneando) {
-                    LinearProgressIndicator(
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Button(
+                onClick = onAbrirAjustes,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp),
+                shape = RoundedCornerShape(50.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFF4F4F4),
+                    contentColor = Color.Black
+                )
+            ) {
+
+                Text(
+                    text = "Abrir ajustes",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
         }
+    }
+}
 
-        // Resultado del descubrimiento.
-        capsulaEncontrada?.let { capsula ->
 
-            Card(
-                modifier = Modifier.fillMaxWidth()
+// =====================================================
+// VENTANAS DE ERROR DEL QR
+// =====================================================
+
+@Composable
+private fun VentanaErrorQr(
+    modifier: Modifier = Modifier,
+    error: TipoErrorQr,
+    nombrePunto: String,
+    onReintentar: () -> Unit,
+    onVolverMapa: () -> Unit
+) {
+
+    val otroPunto = error == TipoErrorQr.OTRO_PUNTO
+
+    Box(
+        modifier = modifier
+            .background(Color(0xFF29292B))
+            .padding(horizontal = 22.dp),
+        contentAlignment = Alignment.Center
+    ) {
+
+        Column(
+            modifier = Modifier
+                .widthIn(max = 380.dp)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .background(
+                    color = Color(0xFF0D0D0F),
+                    shape = RoundedCornerShape(24.dp)
+                )
+                .padding(
+                    horizontal = 22.dp,
+                    vertical = 28.dp
+                ),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+
+            // Ícono rojo según el tipo de error.
+            IconoErrorQr(
+                otroPunto = otroPunto,
+                modifier = Modifier.size(54.dp)
+            )
+
+            Spacer(Modifier.height(18.dp))
+
+            // Título de la ventana.
+            Text(
+                text = if (otroPunto) {
+                    "QR incorrecto"
+                } else {
+                    "QR no válido"
+                },
+                color = Color.White,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                lineHeight = 29.sp,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(Modifier.height(22.dp))
+
+            // Explicación del error.
+            Text(
+                text = when (error) {
+
+                    TipoErrorQr.NO_VALIDO ->
+                        "El código QR escaneado no pertenece a Triskeledu."
+
+                    TipoErrorQr.NO_PUBLICADO ->
+                        "El código QR escaneado no está disponible."
+
+                    TipoErrorQr.OTRO_PUNTO ->
+                        "El código QR escaneado no pertenece al punto turístico seleccionado."
+                },
+                color = Color.White,
+                fontSize = 16.sp,
+                lineHeight = 24.sp,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(Modifier.height(22.dp))
+
+            // Recuadro gris informativo.
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        color = Color(0xFF2C2C2F),
+                        shape = RoundedCornerShape(18.dp)
+                    )
+                    .padding(18.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement =
-                        Arrangement.spacedBy(12.dp)
-                ) {
 
+                if (otroPunto) {
+
+                    // Solo se muestra el punto seleccionado.
+                    // NO se revela a qué lugar pertenece
+                    // el código QR rechazado.
                     Text(
-                        text = "¡Descubrimiento encontrado!",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        text = "Punto turístico seleccionado",
+                        color = Color(0xFFBDBDBD),
+                        fontSize = 13.sp,
+                        textAlign = TextAlign.Center
                     )
 
-                    Text(
-                        text = if (puntosGanados > 0) {
-                            "+10 puntos"
-                        } else {
-                            "QR descubierto anteriormente"
-                        },
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold
-                    )
+                    if (nombrePunto.isNotBlank()) {
 
-                    Text(
-                        text = capsula.titulo,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
+                        Spacer(Modifier.height(8.dp))
 
-                    Text(capsula.descripcion)
-
-                    Text(
-                        text = "Video educativo",
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    val url = capsula.urlVideo
-
-                    if (
-                        url.startsWith("https://") ||
-                        url.startsWith("http://")
-                    ) {
                         Text(
-                            text = url,
-                            color =
-                                MaterialTheme.colorScheme.primary,
-                            textDecoration =
-                                TextDecoration.Underline,
-                            modifier = Modifier.clickable {
-                                abrirEnlace.openUri(url)
-                            }
-                        )
-                    } else {
-                        Text(
-                            "Esta cápsula no tiene un enlace de video válido."
+                            text = nombrePunto,
+                            color = Color.White,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center
                         )
                     }
+
+                    Spacer(Modifier.height(10.dp))
+                }
+
+                Text(
+                    text = if (otroPunto) {
+                        "Escanea un código QR correspondiente a este lugar."
+                    } else {
+                        "Escanea un código QR válido para continuar con tu descubrimiento."
+                    },
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    lineHeight = 24.sp,
+                    textAlign = TextAlign.Center
+                )
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            // Botón para regresar a la cámara.
+            Button(
+                onClick = onReintentar,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp),
+                shape = RoundedCornerShape(50.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFF4F4F4),
+                    contentColor = Color.Black
+                )
+            ) {
+
+                Text(
+                    text = "Volver a escanear",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+
+            // Solo aparece en el error de punto turístico.
+            if (otroPunto) {
+
+                Spacer(Modifier.height(8.dp))
+
+                TextButton(
+                    onClick = onVolverMapa
+                ) {
+
+                    Text(
+                        text = "Volver al mapa",
+                        color = Color(0xFFD1D5DB),
+                        fontSize = 16.sp
+                    )
                 }
             }
         }
     }
 }
 
-// Dibuja las cuatro esquinas blancas del escáner.
+
+// =====================================================
+// ÍCONO DE ERROR DEL CÓDIGO QR
+// =====================================================
+
+@Composable
+private fun IconoErrorQr(
+    otroPunto: Boolean,
+    modifier: Modifier = Modifier
+) {
+
+    Canvas(modifier = modifier) {
+
+        val color = Color(0xFFF87171)
+        val grosor = 3.dp.toPx()
+
+        val ancho = size.width
+        val alto = size.height
+
+        val centroX = ancho / 2f
+        val centroY = alto / 2f
+
+        if (otroPunto) {
+
+            // Marcador de ubicación.
+            val pin = Path().apply {
+
+                moveTo(
+                    centroX,
+                    alto * 0.92f
+                )
+
+                cubicTo(
+                    ancho * 0.40f, alto * 0.77f,
+                    ancho * 0.14f, alto * 0.53f,
+                    ancho * 0.14f, alto * 0.40f
+                )
+
+                cubicTo(
+                    ancho * 0.14f, alto * 0.02f,
+                    ancho * 0.86f, alto * 0.02f,
+                    ancho * 0.86f, alto * 0.40f
+                )
+
+                cubicTo(
+                    ancho * 0.86f, alto * 0.53f,
+                    ancho * 0.60f, alto * 0.77f,
+                    centroX, alto * 0.92f
+                )
+
+                close()
+            }
+
+            drawPath(
+                path = pin,
+                color = color,
+                style = Stroke(width = grosor)
+            )
+
+        } else {
+
+            // Círculo para QR no válido.
+            drawCircle(
+                color = color,
+                radius = ancho * 0.42f,
+                center = Offset(centroX, centroY),
+                style = Stroke(width = grosor)
+            )
+        }
+
+        // Dibuja una X dentro del ícono.
+        val posicionY = if (otroPunto) {
+            alto * 0.38f
+        } else {
+            centroY
+        }
+
+        val distancia = ancho * 0.13f
+
+        drawLine(
+            color = color,
+            start = Offset(
+                centroX - distancia,
+                posicionY - distancia
+            ),
+            end = Offset(
+                centroX + distancia,
+                posicionY + distancia
+            ),
+            strokeWidth = grosor,
+            cap = StrokeCap.Round
+        )
+
+        drawLine(
+            color = color,
+            start = Offset(
+                centroX + distancia,
+                posicionY - distancia
+            ),
+            end = Offset(
+                centroX - distancia,
+                posicionY + distancia
+            ),
+            strokeWidth = grosor,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+
+// =====================================================
+// ÍCONO DE CÁMARA DESACTIVADA
+// =====================================================
+
+@Composable
+private fun IconoCamaraDesactivada(
+    modifier: Modifier = Modifier
+) {
+
+    Canvas(modifier = modifier) {
+
+        val ancho = size.width
+        val alto = size.height
+        val color = Color(0xFFD8D8D8)
+        val grosor = 3.dp.toPx()
+
+        // Cuerpo de la cámara.
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(
+                ancho * 0.17f,
+                alto * 0.30f
+            ),
+            size = Size(
+                ancho * 0.66f,
+                alto * 0.46f
+            ),
+            cornerRadius = CornerRadius(
+                5.dp.toPx()
+            ),
+            style = Stroke(width = grosor)
+        )
+
+        // Parte superior de la cámara.
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(
+                ancho * 0.35f,
+                alto * 0.22f
+            ),
+            size = Size(
+                ancho * 0.30f,
+                alto * 0.13f
+            ),
+            cornerRadius = CornerRadius(
+                2.dp.toPx()
+            ),
+            style = Stroke(width = grosor)
+        )
+
+        // Lente.
+        drawCircle(
+            color = color,
+            radius = ancho * 0.12f,
+            center = Offset(
+                ancho * 0.50f,
+                alto * 0.53f
+            ),
+            style = Stroke(width = grosor)
+        )
+
+        // Fondo de la línea diagonal.
+        drawLine(
+            color = Color(0xFF0D0D0F),
+            start = Offset(
+                ancho * 0.19f,
+                alto * 0.16f
+            ),
+            end = Offset(
+                ancho * 0.81f,
+                alto * 0.84f
+            ),
+            strokeWidth = grosor * 2.6f,
+            cap = StrokeCap.Round
+        )
+
+        // Línea diagonal visible.
+        drawLine(
+            color = color,
+            start = Offset(
+                ancho * 0.19f,
+                alto * 0.16f
+            ),
+            end = Offset(
+                ancho * 0.81f,
+                alto * 0.84f
+            ),
+            strokeWidth = grosor,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+
+// =====================================================
+// CÁMARA EN VIVO CON CAMERAX Y ML KIT
+// =====================================================
+
+@Composable
+private fun CamaraQrEnVivo(
+    modifier: Modifier = Modifier,
+    lifecycleOwner: androidx.lifecycle.LifecycleOwner,
+    qrBloqueado: AtomicBoolean,
+    resultadoEncontrado: AtomicBoolean,
+    qrRechazado: AtomicReference<String?>,
+    fotogramasSinQr: AtomicInteger,
+    onQrDetectado: (String) -> Unit,
+    onError: (String) -> Unit
+) {
+
+    val context = LocalContext.current
+
+    val callbackQr by rememberUpdatedState(onQrDetectado)
+    val callbackError by rememberUpdatedState(onError)
+
+    val previewView = remember(context) {
+
+        PreviewView(context).apply {
+
+            implementationMode =
+                PreviewView.ImplementationMode.COMPATIBLE
+
+            scaleType =
+                PreviewView.ScaleType.FILL_CENTER
+        }
+    }
+
+    DisposableEffect(context, lifecycleOwner) {
+
+        val executor =
+            Executors.newSingleThreadExecutor()
+
+        val opciones = BarcodeScannerOptions.Builder()
+            .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+            .build()
+
+        val lectorQr =
+            BarcodeScanning.getClient(opciones)
+
+        val proveedorFuturo =
+            ProcessCameraProvider.getInstance(context)
+
+        var proveedorCamara: ProcessCameraProvider? = null
+
+        var analizador: ImageAnalysis? = null
+
+        var vistaPrevia: Preview? = null
+
+        val activo = AtomicBoolean(true)
+
+        val iniciarCamara = Runnable {
+
+            if (!activo.get()) return@Runnable
+
+            try {
+
+                val proveedor = proveedorFuturo.get()
+
+                if (!activo.get()) return@Runnable
+
+                proveedorCamara = proveedor
+
+                val preview = Preview.Builder()
+                    .build()
+                    .also {
+
+                        it.surfaceProvider =
+                            previewView.surfaceProvider
+                    }
+
+                vistaPrevia = preview
+
+                val analisis = ImageAnalysis.Builder()
+                    .setBackpressureStrategy(
+                        ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST
+                    )
+                    .build()
+
+                analizador = analisis
+
+                analisis.setAnalyzer(executor) { imageProxy ->
+
+                    if (
+                        !activo.get() ||
+                        qrBloqueado.get() ||
+                        resultadoEncontrado.get()
+                    ) {
+
+                        imageProxy.close()
+
+                    } else {
+
+                        analizarImagenQr(
+                            imageProxy = imageProxy,
+                            lectorQr = lectorQr,
+                            activo = activo,
+                            qrBloqueado = qrBloqueado,
+                            qrRechazado = qrRechazado,
+                            fotogramasSinQr = fotogramasSinQr,
+
+                            onQrDetectado = { texto ->
+
+                                ContextCompat
+                                    .getMainExecutor(context)
+                                    .execute {
+
+                                        if (activo.get()) {
+
+                                            callbackQr(texto)
+                                        }
+                                    }
+                            }
+                        )
+                    }
+                }
+
+                proveedor.unbindAll()
+
+                proveedor.bindToLifecycle(
+                    lifecycleOwner,
+                    CameraSelector.DEFAULT_BACK_CAMERA,
+                    preview,
+                    analisis
+                )
+
+            } catch (error: Exception) {
+
+                Log.e(
+                    "TriskeleduQR",
+                    "Error al iniciar cámara",
+                    error
+                )
+
+                if (activo.get()) {
+
+                    callbackError(
+                        "No se pudo iniciar la cámara: ${error.message}"
+                    )
+                }
+            }
+        }
+
+        proveedorFuturo.addListener(
+            iniciarCamara,
+            ContextCompat.getMainExecutor(context)
+        )
+
+        // Libera la cámara al salir de la pantalla
+        // o cuando aparece una ventana de error.
+        onDispose {
+
+            activo.set(false)
+
+            analizador?.clearAnalyzer()
+
+            vistaPrevia?.let { preview ->
+
+                proveedorCamara?.unbind(preview)
+            }
+
+            analizador?.let { analisis ->
+
+                proveedorCamara?.unbind(analisis)
+            }
+
+            lectorQr.close()
+
+            executor.shutdown()
+        }
+    }
+
+    AndroidView(
+        factory = { previewView },
+        modifier = modifier
+    )
+}
+
+
+// =====================================================
+// ANÁLISIS DE CÓDIGOS QR CON ML KIT
+// =====================================================
+
+private fun analizarImagenQr(
+    imageProxy: ImageProxy,
+    lectorQr: com.google.mlkit.vision.barcode.BarcodeScanner,
+    activo: AtomicBoolean,
+    qrBloqueado: AtomicBoolean,
+    qrRechazado: AtomicReference<String?>,
+    fotogramasSinQr: AtomicInteger,
+    onQrDetectado: (String) -> Unit
+) {
+
+    try {
+
+        // Conserva la conversión que ya funcionaba.
+        val bitmap = imageProxy.toBitmap()
+
+        val imagen = InputImage.fromBitmap(
+            bitmap,
+            imageProxy.imageInfo.rotationDegrees
+        )
+
+        lectorQr.process(imagen)
+
+            .addOnSuccessListener { codigos ->
+
+                if (!activo.get() || qrBloqueado.get()) {
+
+                    return@addOnSuccessListener
+                }
+
+                val textos = codigos.mapNotNull { codigo ->
+
+                    codigo.rawValue?.takeIf {
+                        it.isNotBlank()
+                    }
+                }
+
+                // Comprueba si el QR rechazado sigue
+                // apareciendo delante de la cámara.
+                val rechazado = qrRechazado.get()
+
+                if (rechazado != null) {
+
+                    val sigueVisible = textos.any { texto ->
+
+                        extraerCodigoQr(texto) == rechazado
+                    }
+
+                    if (sigueVisible) {
+
+                        fotogramasSinQr.set(0)
+
+                    } else if (
+                        fotogramasSinQr.incrementAndGet() >= 3
+                    ) {
+
+                        // Permite volver a intentar ese QR
+                        // cuando se haya retirado de la cámara.
+                        qrRechazado.compareAndSet(
+                            rechazado,
+                            null
+                        )
+
+                        fotogramasSinQr.set(0)
+                    }
+                }
+
+                // Busca un QR diferente al rechazado.
+                val texto = textos.firstOrNull {
+
+                    extraerCodigoQr(it) != qrRechazado.get()
+                }
+
+                if (
+                    !texto.isNullOrBlank() &&
+                    qrBloqueado.compareAndSet(false, true)
+                ) {
+
+                    onQrDetectado(texto)
+                }
+            }
+
+            .addOnFailureListener { error ->
+
+                Log.e(
+                    "TriskeleduQR",
+                    "Error al analizar QR",
+                    error
+                )
+            }
+
+            .addOnCompleteListener {
+
+                bitmap.recycle()
+
+                imageProxy.close()
+            }
+
+    } catch (error: Exception) {
+
+        Log.e(
+            "TriskeleduQR",
+            "Error al convertir imagen",
+            error
+        )
+
+        imageProxy.close()
+    }
+}
+
+
+// =====================================================
+// MARCO DE CUATRO ESQUINAS BLANCAS
+// =====================================================
+
 @Composable
 private fun MarcoEscaneoQr(
     modifier: Modifier = Modifier
 ) {
+
     Canvas(modifier = modifier) {
 
         val largo = 38.dp.toPx()
@@ -540,14 +1389,24 @@ private fun MarcoEscaneoQr(
     }
 }
 
-// Acepta códigos QR simples o JSON.
+
+// =====================================================
+// EXTRAER CÓDIGO QR SIMPLE O JSON
+// =====================================================
+
 private fun extraerCodigoQr(texto: String): String {
+
     return try {
+
         val json = JSONObject(texto)
-        json.optString("codigoQr", texto).trim()
+
+        json.optString(
+            "codigoQr",
+            texto
+        ).trim()
+
     } catch (error: Exception) {
+
         texto.trim()
     }
 }
-
-

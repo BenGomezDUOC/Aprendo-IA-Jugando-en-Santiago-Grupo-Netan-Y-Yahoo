@@ -16,6 +16,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -40,6 +42,8 @@ import cl.triskeledu.aprendogame.viewmodel.SessionViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+
 @Composable
 fun AppNavigation() {
 
@@ -73,10 +77,13 @@ fun AppNavigation() {
         SessionManager(context.applicationContext)
     }
 
-    // ID de la cuenta que inició sesión (se recupera de la sesión persistida).
+    // Recupera el usuario de la sesión persistida.
     var jugadorActivoId by rememberSaveable {
-        mutableStateOf<Int?>(sessionManager.obtenerUsuarioActivo())
+        mutableStateOf<Int?>(
+            sessionManager.obtenerUsuarioActivo()
+        )
     }
+
     // ViewModels especializados por área funcional.
     val sessionViewModel: SessionViewModel = viewModel()
     val coleccionViewModel: ColeccionViewModel = viewModel()
@@ -85,25 +92,37 @@ fun AppNavigation() {
     val notificacionesViewModel: NotificacionesViewModel = viewModel()
     val selfieViewModel: SelfieTuristicaViewModel = viewModel()
 
-    // Comprueba la validez de la sesión persistida al iniciar la app
-    var sesionInicializada by remember { mutableStateOf(false) }
+    // Comprueba la validez de la sesión persistida.
+    var sesionInicializada by remember {
+        mutableStateOf(false)
+    }
 
     LaunchedEffect(Unit) {
+
         val guardadoId = sessionManager.obtenerUsuarioActivo()
+
         if (guardadoId != null) {
+
             val existe = withContext(Dispatchers.IO) {
                 usuarioDao.getUsuarioDirecto(guardadoId)
             }
+
             if (existe != null) {
+
                 jugadorActivoId = existe.id
+
                 sessionViewModel.setUsuarioActivo(existe.id)
                 coleccionViewModel.setUsuarioActivo(existe.id)
                 escanerViewModel.setUsuarioActivo(existe.id)
                 notificacionesViewModel.setUsuarioActivo(existe.id)
                 selfieViewModel.setUsuarioActivo(existe.id)
+
             } else {
+
                 sessionManager.cerrarSesion()
+
                 jugadorActivoId = null
+
                 sessionViewModel.cerrarSesion()
                 coleccionViewModel.setUsuarioActivo(null)
                 escanerViewModel.setUsuarioActivo(null)
@@ -111,11 +130,14 @@ fun AppNavigation() {
                 selfieViewModel.setUsuarioActivo(null)
             }
         }
+
         sesionInicializada = true
     }
 
     // ID del punto elegido desde el mapa.
-    var puntoDetalleId by rememberSaveable { mutableStateOf<Int?>(null) }
+    var puntoDetalleId by rememberSaveable {
+        mutableStateOf<Int?>(null)
+    }
 
     val usuarioActual by sessionViewModel.usuario.collectAsState()
 
@@ -128,36 +150,53 @@ fun AppNavigation() {
         mutableIntStateOf(0)
     }
 
-
-    // Guarda cuál video adicional seleccionó el cliente.
-    // null significa que no hay ningún video adicional seleccionado.
+    // Video adicional seleccionado por el cliente.
     var videoAdicionalSeleccionado by remember {
         mutableStateOf<Int?>(null)
     }
 
-    // Video nuevo seleccionado desde el Dashboard.
+    // Video administrativo seleccionado.
     var videoRegistradoSeleccionado by remember {
         mutableStateOf<VideoRegistrado?>(null)
     }
 
-    var capsulaPersonalSeleccionada by remember { mutableStateOf<Capsula?>(null) }
-    var adicionalPersonalSeleccionado by remember { mutableStateOf<Int?>(null) }
-    var tipoVideoPersonal by remember { mutableStateOf("registrado") }
+    // Videos seleccionados por el personal.
+    var capsulaPersonalSeleccionada by remember {
+        mutableStateOf<Capsula?>(null)
+    }
 
-    // Historial visual temporal del personal, separado del progreso del cliente.
-    val videosVistosPersonal = remember { mutableStateMapOf<Int, Boolean>() }
+    var adicionalPersonalSeleccionado by remember {
+        mutableStateOf<Int?>(null)
+    }
 
-    // Sincroniza el usuario activo con el ViewModel.
+    var tipoVideoPersonal by remember {
+        mutableStateOf("registrado")
+    }
+
+    // Historial temporal del personal.
+    val videosVistosPersonal = remember {
+        mutableStateMapOf<Int, Boolean>()
+    }
+
+
+    // --------------------------------------------------
+    // SINCRONIZACIÓN DEL USUARIO ACTIVO
+    // --------------------------------------------------
+
     LaunchedEffect(jugadorActivoId) {
+
         val id = jugadorActivoId
 
         if (id == null) {
-                sessionViewModel.cerrarSesion()
-                coleccionViewModel.setUsuarioActivo(null)
-                escanerViewModel.setUsuarioActivo(null)
-                notificacionesViewModel.setUsuarioActivo(null)
-                selfieViewModel.setUsuarioActivo(null)
+
+            sessionViewModel.cerrarSesion()
+            coleccionViewModel.setUsuarioActivo(null)
+            escanerViewModel.setUsuarioActivo(null)
+            notificacionesViewModel.setUsuarioActivo(null)
+            selfieViewModel.setUsuarioActivo(null)
+
         } else {
+
             sessionViewModel.setUsuarioActivo(id)
             coleccionViewModel.setUsuarioActivo(id)
             escanerViewModel.setUsuarioActivo(id)
@@ -166,9 +205,36 @@ fun AppNavigation() {
         }
     }
 
-    // Navegación inferior del cliente.
-    val entradaActual by navController.currentBackStackEntryAsState()
-    val rutaActual = entradaActual?.destination?.route
+
+    // --------------------------------------------------
+    // RUTAS DEL ESCÁNER QR
+    // --------------------------------------------------
+
+    // -1 significa que no existe un punto turístico
+    // seleccionado: escáner general.
+    val rutaEscanerGeneral = "escanear_qr?puntoId=-1"
+
+    val rutaEscaner = "escanear_qr?puntoId={puntoId}"
+
+    val entradaActual by
+    navController.currentBackStackEntryAsState()
+
+    val rutaRegistrada = entradaActual?.destination?.route
+
+    // Mantiene la selección de la barra inferior.
+    val rutaActual = if (rutaRegistrada == rutaEscaner) {
+        "escanear_qr"
+    } else {
+        rutaRegistrada
+    }
+
+    // Comprueba si el escaneo viene desde un punto.
+    val escaneoDesdePunto =
+        rutaActual == "escanear_qr" &&
+                (
+                        entradaActual?.arguments
+                            ?.getInt("puntoId", -1) ?: -1
+                        ) != -1
 
     val rutasJugador = listOf(
         "cliente",
@@ -179,18 +245,72 @@ fun AppNavigation() {
         "perfil"
     )
 
-    // Evita mostrar la barra del cliente en el perfil
-    // del administrador o del generador.
+    // Solo muestra la barra inferior para el cliente.
     val mostrarBarraJugador =
         jugadorActivoId != null &&
                 usuarioActual?.id == jugadorActivoId &&
                 usuarioActual?.rol == Rol.CLIENTE &&
                 rutaActual in rutasJugador
 
+
+    // --------------------------------------------------
+    // FUNCIONES DE NAVEGACIÓN
+    // --------------------------------------------------
+
+    // Abre el escáner general sin asociarlo a un lugar.
+    fun abrirEscanerGeneral() {
+
+        if (rutaActual == "escanear_qr" && escaneoDesdePunto) {
+
+            navController.navigate(rutaEscanerGeneral) {
+
+                popUpTo(rutaEscaner) {
+                    inclusive = true
+                }
+
+                launchSingleTop = true
+            }
+
+        } else {
+
+            navController.navigate(rutaEscanerGeneral) {
+                launchSingleTop = true
+            }
+        }
+    }
+
+    // Regresa al mapa evitando volver al escáner.
+    fun volverAlMapa() {
+
+        if (navController.currentDestination?.route == "mapa") {
+            return
+        }
+
+        if (!navController.popBackStack("mapa", false)) {
+
+            val rutaOrigen =
+                navController.currentDestination?.route
+
+            navController.navigate("mapa") {
+
+                if (rutaOrigen != null) {
+                    popUpTo(rutaOrigen) {
+                        inclusive = true
+                    }
+                }
+
+                launchSingleTop = true
+            }
+        }
+    }
+
     // Regresa a la pantalla correspondiente al rol.
     fun volverDesdePerfil() {
+
         if (!navController.popBackStack()) {
+
             val destino = when (usuarioActual?.rol) {
+
                 Rol.ADMINISTRADOR -> "administrador"
                 Rol.GENERADOR -> "contenido"
                 else -> "cliente"
@@ -204,31 +324,59 @@ fun AppNavigation() {
 
     // Cierra la sesión de cualquiera de los tres roles.
     fun cerrarSesionActual() {
+
         sessionManager.cerrarSesion()
+
         jugadorActivoId = null
-                sessionViewModel.cerrarSesion()
-                coleccionViewModel.setUsuarioActivo(null)
-                escanerViewModel.setUsuarioActivo(null)
-                notificacionesViewModel.setUsuarioActivo(null)
-                selfieViewModel.setUsuarioActivo(null)
+
+        sessionViewModel.cerrarSesion()
+        coleccionViewModel.setUsuarioActivo(null)
+        escanerViewModel.setUsuarioActivo(null)
+        notificacionesViewModel.setUsuarioActivo(null)
+        selfieViewModel.setUsuarioActivo(null)
+
         resultadoCapsula = null
         resultadoPuntos = 0
+        puntoDetalleId = null
 
         navController.navigate("inicio") {
+
             popUpTo(navController.graph.id) {
                 inclusive = true
             }
+
             launchSingleTop = true
         }
     }
 
+
+    // ==================================================
+    // NAVEGACIÓN PRINCIPAL
+    // ==================================================
+
     Scaffold(
+
         bottomBar = {
+
             if (mostrarBarraJugador) {
+
                 BarraNavegacion(
+
                     rutaActual = rutaActual ?: "cliente",
+
                     onNavegar = { ruta ->
-                        if (ruta != rutaActual) {
+
+                        if (ruta == "escanear_qr") {
+
+                            if (
+                                ruta != rutaActual ||
+                                escaneoDesdePunto
+                            ) {
+                                abrirEscanerGeneral()
+                            }
+
+                        } else if (ruta != rutaActual) {
+
                             navController.navigate(ruta) {
                                 launchSingleTop = true
                             }
@@ -237,29 +385,47 @@ fun AppNavigation() {
                 )
             }
         }
+
     ) { paddingInterno ->
 
         NavHost(
+
             navController = navController,
             startDestination = "inicio",
             modifier = Modifier.padding(paddingInterno)
+
         ) {
 
-            // ------------------------------------------
+
+            // ==========================================
             // PANTALLA 1: INICIO
-            // ------------------------------------------
+            // ==========================================
 
             composable("inicio") {
-                // Si ya había una sesión persistida válida, salta directo a la pantalla del rol
-                LaunchedEffect(sesionInicializada, usuarioActual) {
-                    if (sesionInicializada && jugadorActivoId != null && usuarioActual != null) {
+
+                // Si existe una sesión válida,
+                // abre directamente la pantalla del rol.
+                LaunchedEffect(
+                    sesionInicializada,
+                    usuarioActual
+                ) {
+
+                    if (
+                        sesionInicializada &&
+                        jugadorActivoId != null &&
+                        usuarioActual != null
+                    ) {
+
                         val destino = when (usuarioActual?.rol) {
+
                             Rol.CLIENTE -> "cliente"
                             Rol.GENERADOR -> "contenido"
                             Rol.ADMINISTRADOR -> "administrador"
                             null -> "cliente"
                         }
+
                         navController.navigate(destino) {
+
                             popUpTo("inicio") {
                                 inclusive = true
                             }
@@ -268,42 +434,72 @@ fun AppNavigation() {
                 }
 
                 InicioScreen(
+
                     onComenzarClick = {
                         navController.navigate("registro")
                     },
+
                     onCuentaClick = {
-                        navController.navigate("seleccion_jugador")
+                        navController.navigate(
+                            "seleccion_jugador"
+                        )
                     }
                 )
             }
 
-            // ------------------------------------------
+
+            // ==========================================
             // PANTALLA 2: REGISTRO
-            // ------------------------------------------
+            // ==========================================
 
             composable("registro") {
 
                 RegistroJugador(
+
                     onCrearCuenta = { nuevoJugador, onResultado ->
 
                         scope.launch {
+
                             try {
-                                // Comprobar primero si el correo existe en Room.
-                                val correoExistente = withContext(Dispatchers.IO) {
-                                    usuarioDao.contarPorCorreo(nuevoJugador.correo)
-                                }
+
+                                // Comprueba si el correo existe.
+                                val correoExistente =
+                                    withContext(Dispatchers.IO) {
+
+                                        usuarioDao.contarPorCorreo(
+                                            nuevoJugador.correo
+                                        )
+                                    }
+
                                 if (correoExistente > 0) {
-                                    Toast.makeText(context, "Este correo electrónico ya está registrado", Toast.LENGTH_LONG).show()
+
+                                    Toast.makeText(
+                                        context,
+                                        "Este correo electrónico ya está registrado",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+
                                     onResultado(false)
+
                                     return@launch
                                 }
 
-                                val resultado = withContext(Dispatchers.IO) {
-                                    val jugadorSeguro = nuevoJugador.copy(
-                                        contrasena = PasswordUtils.crearHash(nuevoJugador.contrasena)
-                                    )
-                                    usuarioDao.registrarJugador(jugadorSeguro)
-                                }
+                                val resultado =
+                                    withContext(Dispatchers.IO) {
+
+                                        val jugadorSeguro =
+                                            nuevoJugador.copy(
+
+                                                contrasena =
+                                                    PasswordUtils.crearHash(
+                                                        nuevoJugador.contrasena
+                                                    )
+                                            )
+
+                                        usuarioDao.registrarJugador(
+                                            jugadorSeguro
+                                        )
+                                    }
 
                                 if (resultado == null) {
 
@@ -318,7 +514,11 @@ fun AppNavigation() {
                                 } else {
 
                                     val nuevoId = resultado.toInt()
-                                    sessionManager.guardarUsuarioActivo(nuevoId)
+
+                                    sessionManager.guardarUsuarioActivo(
+                                        nuevoId
+                                    )
+
                                     jugadorActivoId = nuevoId
 
                                     Toast.makeText(
@@ -330,6 +530,7 @@ fun AppNavigation() {
                                     onResultado(true)
 
                                     navController.navigate("cliente") {
+
                                         popUpTo("inicio") {
                                             inclusive = false
                                         }
@@ -351,38 +552,50 @@ fun AppNavigation() {
                 )
             }
 
-            // ------------------------------------------
+
+            // ==========================================
             // PANTALLA 3: INICIO DE SESIÓN
-            // ------------------------------------------
+            // ==========================================
 
             composable("seleccion_jugador") {
 
                 SeleccionJugadorScreen(
+
                     jugadoresFlow = jugadoresFlow,
 
-                    onIniciarSesion = { jugador, contrasena, onResultado ->
+                    onIniciarSesion = {
+                            jugador,
+                            contrasena,
+                            onResultado ->
 
                         scope.launch {
+
                             try {
 
                                 val usuarioEncontrado =
                                     withContext(Dispatchers.IO) {
+
                                         usuarioDao.getUsuarioDirecto(
                                             jugador.id
                                         )
                                     }
 
-                                val contrasenaLimpia = contrasena.trim()
+                                val contrasenaLimpia =
+                                    contrasena.trim()
 
                                 val contrasenaCorrecta =
                                     withContext(Dispatchers.Default) {
 
                                         if (usuarioEncontrado == null) {
+
                                             false
+
                                         } else {
+
                                             PasswordUtils.verificarContrasena(
                                                 contrasena = contrasenaLimpia,
-                                                hashGuardado = usuarioEncontrado.contrasena
+                                                hashGuardado =
+                                                    usuarioEncontrado.contrasena
                                             )
                                         }
                                     }
@@ -392,8 +605,13 @@ fun AppNavigation() {
                                     usuarioEncontrado != null
                                 ) {
 
-                                    sessionManager.guardarUsuarioActivo(usuarioEncontrado.id)
-                                    jugadorActivoId = usuarioEncontrado.id
+                                    sessionManager.guardarUsuarioActivo(
+                                        usuarioEncontrado.id
+                                    )
+
+                                    jugadorActivoId =
+                                        usuarioEncontrado.id
+
                                     onResultado(true)
 
                                     Toast.makeText(
@@ -402,11 +620,13 @@ fun AppNavigation() {
                                         Toast.LENGTH_SHORT
                                     ).show()
 
-                                    val destino = when (usuarioEncontrado.rol) {
-                                        Rol.CLIENTE -> "cliente"
-                                        Rol.GENERADOR -> "contenido"
-                                        Rol.ADMINISTRADOR -> "administrador"
-                                    }
+                                    val destino =
+                                        when (usuarioEncontrado.rol) {
+
+                                            Rol.CLIENTE -> "cliente"
+                                            Rol.GENERADOR -> "contenido"
+                                            Rol.ADMINISTRADOR -> "administrador"
+                                        }
 
                                     navController.navigate(destino) {
                                         launchSingleTop = true
@@ -415,12 +635,14 @@ fun AppNavigation() {
                                 } else {
 
                                     jugadorActivoId = null
+
                                     onResultado(false)
                                 }
 
                             } catch (e: Exception) {
 
                                 jugadorActivoId = null
+
                                 onResultado(false)
 
                                 Toast.makeText(
@@ -438,16 +660,21 @@ fun AppNavigation() {
                 )
             }
 
-            // ------------------------------------------
+
+            // ==========================================
             // PANTALLA 4: DASHBOARD DEL CLIENTE
-            // ------------------------------------------
+            // ==========================================
 
             composable("cliente") {
 
                 if (jugadorActivoId == null) {
 
                     LaunchedEffect(Unit) {
-                        navController.navigate("seleccion_jugador") {
+
+                        navController.navigate(
+                            "seleccion_jugador"
+                        ) {
+
                             popUpTo("cliente") {
                                 inclusive = true
                             }
@@ -457,96 +684,142 @@ fun AppNavigation() {
                 } else {
 
                     DashboardScreen(
+
                         sessionViewModel = sessionViewModel,
                         coleccionViewModel = coleccionViewModel,
                         mapaViewModel = mapaViewModel,
-                        notificacionesViewModel = notificacionesViewModel,
+                        notificacionesViewModel =
+                            notificacionesViewModel,
 
                         onMapaClick = {
+
                             navController.navigate("mapa") {
                                 launchSingleTop = true
                             }
                         },
 
+                        // Escáner general: acepta cualquier
+                        // QR válido y publicado de Triskeledu.
                         onEscanerClick = {
-                            navController.navigate("escanear_qr") {
-                                launchSingleTop = true
-                            }
+
+                            abrirEscanerGeneral()
                         },
 
-
                         onColeccionClick = {
+
                             navController.navigate("coleccion") {
                                 launchSingleTop = true
                             }
                         },
 
-
                         onVideoAdicionalClick = { numeroVideo ->
-                            videoAdicionalSeleccionado = numeroVideo
-                            navController.navigate("video_adicional")
+
+                            videoAdicionalSeleccionado =
+                                numeroVideo
+
+                            navController.navigate(
+                                "video_adicional"
+                            )
                         },
 
                         onVideoRegistradoClick = { video ->
+
                             videoRegistradoSeleccionado = video
-                            navController.navigate("video_registrado")
+
+                            navController.navigate(
+                                "video_registrado"
+                            )
                         },
 
                         onProgresoClick = {
-                            navController.navigate("puntaje_progreso") {
+
+                            navController.navigate(
+                                "puntaje_progreso"
+                            ) {
                                 launchSingleTop = true
                             }
                         },
 
                         onContenidosEducativosClick = {
-                            navController.navigate("contenidos_educativos") {
+
+                            navController.navigate(
+                                "contenidos_educativos"
+                            ) {
                                 launchSingleTop = true
                             }
                         }
-
                     )
                 }
             }
 
-            // ------------------------------------------
+
+            // ==========================================
             // CONTENIDOS EDUCATIVOS DEL JUGADOR
-            // ------------------------------------------
+            // ==========================================
 
             composable("contenidos_educativos") {
+
                 if (
                     jugadorActivoId != null &&
                     usuarioActual?.id == jugadorActivoId &&
                     usuarioActual?.rol == Rol.CLIENTE
                 ) {
+
                     ContenidosEducativosScreen(
-                        coleccionViewModel = coleccionViewModel,
-                        onVolver = { navController.popBackStack() },
+
+                        coleccionViewModel =
+                            coleccionViewModel,
+
+                        onVolver = {
+                            navController.popBackStack()
+                        },
+
                         onVideoAdicionalClick = { numeroVideo ->
-                            videoAdicionalSeleccionado = numeroVideo
-                            navController.navigate("video_adicional")
+
+                            videoAdicionalSeleccionado =
+                                numeroVideo
+
+                            navController.navigate(
+                                "video_adicional"
+                            )
                         },
+
                         onVideoRegistradoClick = { video ->
+
                             videoRegistradoSeleccionado = video
-                            navController.navigate("video_registrado")
+
+                            navController.navigate(
+                                "video_registrado"
+                            )
                         },
+
                         onCapsulaClick = { capsula ->
+
                             resultadoCapsula = capsula
-                            navController.navigate("video_educativo")
+
+                            navController.navigate(
+                                "video_educativo"
+                            )
                         }
                     )
                 }
             }
 
-            // ------------------------------------------
+
+            // ==========================================
             // PANTALLA 12: PUNTAJE Y PROGRESO
-            // ------------------------------------------
+            // ==========================================
 
             composable("puntaje_progreso") {
 
                 if (jugadorActivoId == null) {
 
                     LaunchedEffect(Unit) {
-                        navController.navigate("seleccion_jugador") {
+
+                        navController.navigate(
+                            "seleccion_jugador"
+                        ) {
+
                             popUpTo("puntaje_progreso") {
                                 inclusive = true
                             }
@@ -554,11 +827,14 @@ fun AppNavigation() {
                     }
 
                 } else if (
+
                     usuarioActual?.id == jugadorActivoId &&
                     usuarioActual?.rol == Rol.CLIENTE
+
                 ) {
 
                     PuntajeProgresoScreen(
+
                         sessionViewModel = sessionViewModel,
                         coleccionViewModel = coleccionViewModel,
 
@@ -567,7 +843,10 @@ fun AppNavigation() {
                         },
 
                         onHistorialClick = {
-                            navController.navigate("historial_actividades") {
+
+                            navController.navigate(
+                                "historial_actividades"
+                            ) {
                                 launchSingleTop = true
                             }
                         }
@@ -575,16 +854,21 @@ fun AppNavigation() {
                 }
             }
 
-            // ------------------------------------------
+
+            // ==========================================
             // PANTALLA 13: HISTORIAL DE ACTIVIDADES
-            // ------------------------------------------
+            // ==========================================
 
             composable("historial_actividades") {
 
                 if (jugadorActivoId == null) {
 
                     LaunchedEffect(Unit) {
-                        navController.navigate("seleccion_jugador") {
+
+                        navController.navigate(
+                            "seleccion_jugador"
+                        ) {
+
                             popUpTo("historial_actividades") {
                                 inclusive = true
                             }
@@ -592,14 +876,18 @@ fun AppNavigation() {
                     }
 
                 } else if (
+
                     usuarioActual?.id == jugadorActivoId &&
                     usuarioActual?.rol == Rol.CLIENTE
+
                 ) {
 
                     HistorialActividadesScreen(
+
                         sessionViewModel = sessionViewModel,
                         coleccionViewModel = coleccionViewModel,
                         mapaViewModel = mapaViewModel,
+
                         onVolverClick = {
                             navController.popBackStack()
                         }
@@ -607,16 +895,21 @@ fun AppNavigation() {
                 }
             }
 
-            // ------------------------------------------
+
+            // ==========================================
             // MAPA
-            // ------------------------------------------
+            // ==========================================
 
             composable("mapa") {
 
                 if (jugadorActivoId == null) {
 
                     LaunchedEffect(Unit) {
-                        navController.navigate("seleccion_jugador") {
+
+                        navController.navigate(
+                            "seleccion_jugador"
+                        ) {
+
                             popUpTo("mapa") {
                                 inclusive = true
                             }
@@ -626,88 +919,192 @@ fun AppNavigation() {
                 } else {
 
                     MapaScreen(
-                        viewModel = mapaViewModel,
-                        onVerDetallesClick = { punto ->
-                            puntoDetalleId = punto.id
-                            navController.navigate("detalle_punto")
-                        },
-                        onVolverClick = if (
-                            usuarioActual?.rol == Rol.ADMINISTRADOR ||
-                            usuarioActual?.rol == Rol.GENERADOR
-                        ) {
-                            { navController.popBackStack() }
-                        } else null
-                    )
-                }
-            }
 
-            // ------------------------------------------
-            // DETALLE DEL PUNTO (TODOS LOS ROLES)
-            // ------------------------------------------
-            composable("detalle_punto") {
-                val id = puntoDetalleId
-                val rol = usuarioActual?.rol
-                if (jugadorActivoId != null && usuarioActual?.id == jugadorActivoId &&
-                    id != null && rol != null
-                ) {
-                    DetallePuntoScreen(
-                        puntoId = id,
-                        rol = rol,
-                        mapaViewModel = mapaViewModel,
-                        coleccionViewModel = coleccionViewModel,
-                        onVolver = { navController.popBackStack() },
-                        onEscanearQr = {
-                            if (rol == Rol.CLIENTE) navController.navigate("escanear_qr")
+                        viewModel = mapaViewModel,
+
+                        onVerDetallesClick = { punto ->
+
+                            // Guarda el punto seleccionado.
+                            puntoDetalleId = punto.id
+
+                            navController.navigate(
+                                "detalle_punto"
+                            )
+                        },
+
+                        onVolverClick = if (
+
+                            usuarioActual?.rol ==
+                            Rol.ADMINISTRADOR ||
+
+                            usuarioActual?.rol ==
+                            Rol.GENERADOR
+
+                        ) {
+
+                            {
+                                navController.popBackStack()
+                            }
+
+                        } else {
+
+                            null
                         }
                     )
                 }
             }
 
-            // ------------------------------------------
-            // ESCÁNER QR
-            // ------------------------------------------
 
-            composable("escanear_qr") {
+            // ==========================================
+            // DETALLE DEL PUNTO TURÍSTICO
+            // ==========================================
+
+            composable("detalle_punto") {
+
+                val id = puntoDetalleId
+                val rol = usuarioActual?.rol
+
+                if (
+                    jugadorActivoId != null &&
+                    usuarioActual?.id == jugadorActivoId &&
+                    id != null &&
+                    rol != null
+                ) {
+
+                    DetallePuntoScreen(
+
+                        puntoId = id,
+                        rol = rol,
+                        mapaViewModel = mapaViewModel,
+                        coleccionViewModel = coleccionViewModel,
+
+                        onVolver = {
+                            navController.popBackStack()
+                        },
+
+                        // Envía el ID del punto turístico
+                        // seleccionado al escáner.
+                        onEscanearQr = {
+
+                            if (rol == Rol.CLIENTE) {
+
+                                navController.navigate(
+                                    "escanear_qr?puntoId=$id"
+                                ) {
+                                    launchSingleTop = true
+                                }
+                            }
+                        }
+                    )
+                }
+            }
+
+
+            // ==========================================
+            // ESCÁNER QR
+            // ==========================================
+
+            composable(
+
+                route = rutaEscaner,
+
+                arguments = listOf(
+
+                    navArgument("puntoId") {
+
+                        type = NavType.IntType
+
+                        // -1 representa el escáner general.
+                        defaultValue = -1
+                    }
+                )
+
+            ) { entrada ->
+
+                // Si existe un ID, el QR debe pertenecer
+                // al punto turístico seleccionado.
+                // Si es null, se permite cualquier QR válido.
+                val puntoIdEsperado = entrada.arguments
+                    ?.getInt("puntoId", -1)
+                    ?.takeIf { it != -1 }
 
                 if (jugadorActivoId == null) {
 
                     LaunchedEffect(Unit) {
-                        navController.navigate("seleccion_jugador") {
-                            popUpTo("escanear_qr") {
+
+                        navController.navigate(
+                            "seleccion_jugador"
+                        ) {
+
+                            popUpTo(rutaEscaner) {
                                 inclusive = true
                             }
                         }
                     }
 
                 } else if (
+
                     usuarioActual?.id == jugadorActivoId &&
                     usuarioActual?.rol == Rol.CLIENTE
+
                 ) {
 
-                    EscanerQRScreen(
-                        escanerViewModel = escanerViewModel,
+                    // Reinicia los estados del escáner cuando
+                    // cambia el punto turístico esperado.
+                    key(puntoIdEsperado) {
 
-                        onResultadoQr = { capsula, puntos ->
+                        EscanerQRScreen(
 
-                            resultadoCapsula = capsula
-                            resultadoPuntos = puntos
+                            escanerViewModel =
+                                escanerViewModel,
 
-                            navController.navigate("resultado_qr")
-                        }
-                    )
+                            puntoIdEsperado =
+                                puntoIdEsperado,
+
+                            onVolverMapa = {
+
+                                volverAlMapa()
+                            },
+
+                            onResultadoQr = { capsula, puntos ->
+
+                                resultadoCapsula = capsula
+                                resultadoPuntos = puntos
+
+                                // Elimina el escáner de la pila
+                                // para evitar regresar a la cámara
+                                // y escanear el mismo QR.
+                                navController.navigate(
+                                    "resultado_qr"
+                                ) {
+
+                                    popUpTo(rutaEscaner) {
+                                        inclusive = true
+                                    }
+
+                                    launchSingleTop = true
+                                }
+                            }
+                        )
+                    }
                 }
             }
 
-            // ------------------------------------------
+
+            // ==========================================
             // ADMINISTRADOR
-            // ------------------------------------------
+            // ==========================================
 
             composable("administrador") {
 
                 if (jugadorActivoId == null) {
 
                     LaunchedEffect(Unit) {
-                        navController.navigate("seleccion_jugador") {
+
+                        navController.navigate(
+                            "seleccion_jugador"
+                        ) {
+
                             popUpTo("administrador") {
                                 inclusive = true
                             }
@@ -715,61 +1112,98 @@ fun AppNavigation() {
                     }
 
                 } else if (
+
                     usuarioActual?.id == jugadorActivoId &&
                     usuarioActual?.rol == Rol.ADMINISTRADOR
+
                 ) {
 
                     Box(
                         modifier = Modifier.fillMaxSize()
                     ) {
 
-                        // Conserva la pantalla existente.
                         AdministradorScreen(
+
                             onGestionPuntosClick = {
-                                navController.navigate("gestion_puntos") {
+
+                                navController.navigate(
+                                    "gestion_puntos"
+                                ) {
                                     launchSingleTop = true
                                 }
                             },
 
                             onGestionVideosClick = {
-                                navController.navigate("gestion_videos") {
+
+                                navController.navigate(
+                                    "gestion_videos"
+                                ) {
                                     launchSingleTop = true
                                 }
                             },
 
                             onGestionQrClick = {
-                                navController.navigate("gestion_qr") {
+
+                                navController.navigate(
+                                    "gestion_qr"
+                                ) {
                                     launchSingleTop = true
                                 }
                             },
-                            onTodosVideosClick = { navController.navigate("todos_videos") }
+
+                            onTodosVideosClick = {
+
+                                navController.navigate(
+                                    "todos_videos"
+                                )
+                            }
                         )
 
-
-                        // Acceso de consulta al mapa para este rol.
+                        // Acceso al mapa.
                         ExtendedFloatingActionButton(
-                            onClick = { navController.navigate("mapa") },
-                            icon = { Icon(Icons.Default.Map, contentDescription = null) },
-                            text = { Text("Ver mapa") },
-                            modifier = Modifier.align(Alignment.BottomStart).padding(16.dp)
-                        )
 
-                        // Nuevo acceso al perfil.
-                        ExtendedFloatingActionButton(
                             onClick = {
+                                navController.navigate("mapa")
+                            },
+
+                            icon = {
+                                Icon(
+                                    Icons.Default.Map,
+                                    contentDescription = null
+                                )
+                            },
+
+                            text = {
+                                Text("Ver mapa")
+                            },
+
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(16.dp)
+                        )
+
+                        // Acceso al perfil.
+                        ExtendedFloatingActionButton(
+
+                            onClick = {
+
                                 navController.navigate("perfil") {
                                     launchSingleTop = true
                                 }
                             },
+
                             icon = {
+
                                 Icon(
                                     Icons.Default.Person,
                                     contentDescription = null
                                 )
                             },
+
                             text = {
                                 Text("Mi Perfil")
                             },
+
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
                                 .padding(16.dp)
@@ -777,11 +1211,17 @@ fun AppNavigation() {
                     }
 
                 } else if (
+
                     usuarioActual?.id == jugadorActivoId
+
                 ) {
 
                     LaunchedEffect(Unit) {
-                        navController.navigate("seleccion_jugador") {
+
+                        navController.navigate(
+                            "seleccion_jugador"
+                        ) {
+
                             popUpTo("administrador") {
                                 inclusive = true
                             }
@@ -790,10 +1230,10 @@ fun AppNavigation() {
                 }
             }
 
-            // ------------------------------------------
+
+            // ==========================================
             // GESTIÓN DE PUNTOS TURÍSTICOS
-            // Solo para el Administrador
-            // ------------------------------------------
+            // ==========================================
 
             composable("gestion_puntos") {
 
@@ -803,6 +1243,7 @@ fun AppNavigation() {
                 ) {
 
                     GestionPuntosScreen(
+
                         onVolverClick = {
                             navController.popBackStack()
                         }
@@ -810,10 +1251,10 @@ fun AppNavigation() {
                 }
             }
 
-            // ------------------------------------------
+
+            // ==========================================
             // GESTIÓN DE VIDEOS
-            // Solo para el Administrador
-            // ------------------------------------------
+            // ==========================================
 
             composable("gestion_videos") {
 
@@ -822,7 +1263,9 @@ fun AppNavigation() {
                     usuarioActual?.id == jugadorActivoId &&
                     usuarioActual?.rol == Rol.ADMINISTRADOR
                 ) {
+
                     GestionVideosScreen(
+
                         onVolverClick = {
                             navController.popBackStack()
                         }
@@ -830,8 +1273,10 @@ fun AppNavigation() {
                 }
             }
 
+
+            // ==========================================
             // GESTIÓN DE CÓDIGOS QR
-            // Solo para el Administrador
+            // ==========================================
 
             composable("gestion_qr") {
 
@@ -840,7 +1285,9 @@ fun AppNavigation() {
                     usuarioActual?.id == jugadorActivoId &&
                     usuarioActual?.rol == Rol.ADMINISTRADOR
                 ) {
+
                     GestionQrScreen(
+
                         onVolverClick = {
                             navController.popBackStack()
                         }
@@ -848,16 +1295,21 @@ fun AppNavigation() {
                 }
             }
 
-            // ------------------------------------------
+
+            // ==========================================
             // GENERADOR DE CONTENIDO
-            // ------------------------------------------
+            // ==========================================
 
             composable("contenido") {
 
                 if (jugadorActivoId == null) {
 
                     LaunchedEffect(Unit) {
-                        navController.navigate("seleccion_jugador") {
+
+                        navController.navigate(
+                            "seleccion_jugador"
+                        ) {
+
                             popUpTo("contenido") {
                                 inclusive = true
                             }
@@ -865,43 +1317,72 @@ fun AppNavigation() {
                     }
 
                 } else if (
+
                     usuarioActual?.id == jugadorActivoId &&
                     usuarioActual?.rol == Rol.GENERADOR
+
                 ) {
 
                     Box(
                         modifier = Modifier.fillMaxSize()
                     ) {
 
-                        // Conserva la pantalla existente.
                         ContenidoScreen(
-                            onTodosVideosClick = { navController.navigate("todos_videos") }
+
+                            onTodosVideosClick = {
+
+                                navController.navigate(
+                                    "todos_videos"
+                                )
+                            }
                         )
 
-                        // Acceso de consulta al mapa para este rol.
+                        // Acceso al mapa.
                         ExtendedFloatingActionButton(
-                            onClick = { navController.navigate("mapa") },
-                            icon = { Icon(Icons.Default.Map, contentDescription = null) },
-                            text = { Text("Ver mapa") },
-                            modifier = Modifier.align(Alignment.BottomStart).padding(16.dp)
-                        )
 
-                        // Nuevo acceso al perfil.
-                        ExtendedFloatingActionButton(
                             onClick = {
+                                navController.navigate("mapa")
+                            },
+
+                            icon = {
+
+                                Icon(
+                                    Icons.Default.Map,
+                                    contentDescription = null
+                                )
+                            },
+
+                            text = {
+                                Text("Ver mapa")
+                            },
+
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(16.dp)
+                        )
+
+                        // Acceso al perfil.
+                        ExtendedFloatingActionButton(
+
+                            onClick = {
+
                                 navController.navigate("perfil") {
                                     launchSingleTop = true
                                 }
                             },
+
                             icon = {
+
                                 Icon(
                                     Icons.Default.Person,
                                     contentDescription = null
                                 )
                             },
+
                             text = {
                                 Text("Mi Perfil")
                             },
+
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
                                 .padding(16.dp)
@@ -909,11 +1390,17 @@ fun AppNavigation() {
                     }
 
                 } else if (
+
                     usuarioActual?.id == jugadorActivoId
+
                 ) {
 
                     LaunchedEffect(Unit) {
-                        navController.navigate("seleccion_jugador") {
+
+                        navController.navigate(
+                            "seleccion_jugador"
+                        ) {
+
                             popUpTo("contenido") {
                                 inclusive = true
                             }
@@ -922,63 +1409,144 @@ fun AppNavigation() {
                 }
             }
 
-            // BIBLIOTECA DE VIDEOS DEL PERSONAL (SIN ESCÁNER)
+
+            // ==========================================
+            // BIBLIOTECA DE VIDEOS DEL PERSONAL
+            // ==========================================
+
             composable("todos_videos") {
-                if (jugadorActivoId != null && usuarioActual?.id == jugadorActivoId &&
-                    usuarioActual?.rol in listOf(Rol.ADMINISTRADOR, Rol.GENERADOR)
+
+                if (
+                    jugadorActivoId != null &&
+                    usuarioActual?.id == jugadorActivoId &&
+                    usuarioActual?.rol in listOf(
+                        Rol.ADMINISTRADOR,
+                        Rol.GENERADOR
+                    )
                 ) {
+
                     TodosVideosScreen(
-                        onVolver = { navController.popBackStack() },
+
+                        onVolver = {
+                            navController.popBackStack()
+                        },
+
                         onAbrirVideo = { video ->
+
                             tipoVideoPersonal = "registrado"
+
                             videoRegistradoSeleccionado = video
-                            navController.navigate("video_personal")
+
+                            navController.navigate(
+                                "video_personal"
+                            )
                         },
+
                         onAbrirCapsula = { capsula ->
+
                             tipoVideoPersonal = "capsula"
-                            capsulaPersonalSeleccionada = capsula
-                            navController.navigate("video_personal")
+
+                            capsulaPersonalSeleccionada =
+                                capsula
+
+                            navController.navigate(
+                                "video_personal"
+                            )
                         },
+
                         onAbrirAdicional = { id ->
+
                             tipoVideoPersonal = "adicional"
+
                             adicionalPersonalSeleccionado = id
-                            navController.navigate("video_personal")
+
+                            navController.navigate(
+                                "video_personal"
+                            )
                         }
                     )
                 }
             }
 
+
+            // ==========================================
+            // VIDEO DEL PERSONAL
+            // ==========================================
+
             composable("video_personal") {
-                if (jugadorActivoId != null && usuarioActual?.id == jugadorActivoId &&
-                    usuarioActual?.rol in listOf(Rol.ADMINISTRADOR, Rol.GENERADOR)
+
+                if (
+                    jugadorActivoId != null &&
+                    usuarioActual?.id == jugadorActivoId &&
+                    usuarioActual?.rol in listOf(
+                        Rol.ADMINISTRADOR,
+                        Rol.GENERADOR
+                    )
                 ) {
-                    val capsula = if (tipoVideoPersonal == "capsula") capsulaPersonalSeleccionada else null
-                    val adicional = if (tipoVideoPersonal == "adicional") adicionalPersonalSeleccionado else null
-                    val registrado = if (tipoVideoPersonal == "registrado") videoRegistradoSeleccionado else null
-                    if (capsula != null || adicional != null || registrado != null) {
+
+                    val capsula =
+                        if (tipoVideoPersonal == "capsula") {
+                            capsulaPersonalSeleccionada
+                        } else {
+                            null
+                        }
+
+                    val adicional =
+                        if (tipoVideoPersonal == "adicional") {
+                            adicionalPersonalSeleccionado
+                        } else {
+                            null
+                        }
+
+                    val registrado =
+                        if (tipoVideoPersonal == "registrado") {
+                            videoRegistradoSeleccionado
+                        } else {
+                            null
+                        }
+
+                    if (
+                        capsula != null ||
+                        adicional != null ||
+                        registrado != null
+                    ) {
+
                         VideoEducativoScreen(
+
                             capsula = capsula,
+
                             videoAdicionalId = adicional,
+
                             videoRegistrado = registrado,
+
                             yaVisto = false,
-                            onVideoTerminado = { /* Personal: sin puntos ni recompensas */ },
-                            onVolverColeccion = { navController.popBackStack() }
+
+                            // El personal no obtiene puntos.
+                            onVideoTerminado = {},
+
+                            onVolverColeccion = {
+                                navController.popBackStack()
+                            }
                         )
                     }
                 }
             }
 
-            // ------------------------------------------
-            // COLECCIÓN
-            // ------------------------------------------
 
+            // ==========================================
+            // COLECCIÓN
+            // ==========================================
 
             composable("coleccion") {
 
                 if (jugadorActivoId == null) {
 
                     LaunchedEffect(Unit) {
-                        navController.navigate("seleccion_jugador") {
+
+                        navController.navigate(
+                            "seleccion_jugador"
+                        ) {
+
                             popUpTo("coleccion") {
                                 inclusive = true
                             }
@@ -988,27 +1556,41 @@ fun AppNavigation() {
                 } else {
 
                     ColeccionScreen(
-                        coleccionViewModel = coleccionViewModel,
 
-                        // Abre el video turístico descubierto por QR.
+                        coleccionViewModel =
+                            coleccionViewModel,
+
+                        // Video descubierto mediante QR.
                         onCapsulaClick = { capsula ->
+
                             resultadoCapsula = capsula
-                            navController.navigate("video_educativo")
+
+                            navController.navigate(
+                                "video_educativo"
+                            )
                         },
 
-                        // Abre uno de los dos videos adicionales.
+                        // Videos adicionales.
                         onVideoAdicionalClick = { numeroVideo ->
-                            videoAdicionalSeleccionado = numeroVideo
-                            navController.navigate("video_adicional")
+
+                            videoAdicionalSeleccionado =
+                                numeroVideo
+
+                            navController.navigate(
+                                "video_adicional"
+                            )
                         },
 
-                        // Abre el video administrativo desde la colección.
+                        // Videos creados por el administrador.
                         onVideoRegistradoClick = { video ->
+
                             videoRegistradoSeleccionado = video
-                            navController.navigate("video_registrado")
+
+                            navController.navigate(
+                                "video_registrado"
+                            )
                         },
 
-                        // Regresa a la pantalla anterior.
                         onVolver = {
                             navController.popBackStack()
                         }
@@ -1016,9 +1598,10 @@ fun AppNavigation() {
                 }
             }
 
-            // ------------------------------------------
+
+            // ==========================================
             // RESULTADO DEL QR
-            // ------------------------------------------
+            // ==========================================
 
             composable("resultado_qr") {
 
@@ -1027,7 +1610,11 @@ fun AppNavigation() {
                 if (jugadorActivoId == null) {
 
                     LaunchedEffect(Unit) {
-                        navController.navigate("seleccion_jugador") {
+
+                        navController.navigate(
+                            "seleccion_jugador"
+                        ) {
+
                             popUpTo("resultado_qr") {
                                 inclusive = true
                             }
@@ -1037,64 +1624,74 @@ fun AppNavigation() {
                 } else if (capsula == null) {
 
                     LaunchedEffect(Unit) {
-                        navController.navigate("escanear_qr") {
-                            popUpTo("resultado_qr") {
-                                inclusive = true
-                            }
-                        }
+
+                        // Si no existe un resultado,
+                        // regresa al mapa y no a la cámara.
+                        volverAlMapa()
                     }
 
                 } else {
 
                     ResultadoQRScreen(
+
                         capsula = capsula,
+
                         puntosGanados = resultadoPuntos,
 
                         onVolverMapa = {
-                            navController.navigate("mapa") {
-                                popUpTo("resultado_qr") {
-                                    inclusive = true
-                                }
-                                launchSingleTop = true
-                            }
+
+                            volverAlMapa()
                         },
 
                         onTomarSelfie = {
-                            navController.navigate("selfie_turistica")
+
+                            navController.navigate(
+                                "selfie_turistica"
+                            )
                         },
 
                         onVerVideo = {
-                            navController.navigate("video_educativo")
+
+                            navController.navigate(
+                                "video_educativo"
+                            )
                         },
 
-                        // Flecha superior: regresa al escáner QR.
+                        // Se conserva por compatibilidad.
+                        // La pantalla ya no tiene la flecha.
+                        // Si se usa, vuelve al mapa.
                         onVolverEscaner = {
-                            if (!navController.popBackStack("escanear_qr", false)) {
-                                navController.navigate("escanear_qr") {
-                                    launchSingleTop = true
-                                }
-                            }
+
+                            volverAlMapa()
                         }
                     )
                 }
             }
 
-            // ------------------------------------------
+
+            // ==========================================
             // VIDEO EDUCATIVO
-            // ------------------------------------------
+            // ==========================================
 
             composable("video_educativo") {
 
                 val capsula = resultadoCapsula
+
                 val idJugador = jugadorActivoId
 
-                val videosVistos by coleccionViewModel.videosVistos
+                val videosVistos by
+                coleccionViewModel.videosVistos
                     .collectAsState()
 
-                if (idJugador == null || capsula == null) {
+                if (
+                    idJugador == null ||
+                    capsula == null
+                ) {
 
                     LaunchedEffect(Unit) {
+
                         navController.navigate("cliente") {
+
                             popUpTo("video_educativo") {
                                 inclusive = true
                             }
@@ -1104,14 +1701,18 @@ fun AppNavigation() {
                 } else {
 
                     val yaVisto = videosVistos.any {
+
                         it.capsulaId == capsula.id
                     }
 
                     VideoEducativoScreen(
+
                         capsula = capsula,
+
                         yaVisto = yaVisto,
 
                         onVideoTerminado = {
+
                             coleccionViewModel.registrarVideoVisto(
                                 capsula.id
                             )
@@ -1125,21 +1726,27 @@ fun AppNavigation() {
             }
 
 
-            // ------------------------------------------
+            // ==========================================
             // VIDEO ADICIONAL
-            // ------------------------------------------
+            // ==========================================
 
             composable("video_adicional") {
 
-                val numeroVideo = videoAdicionalSeleccionado
+                val numeroVideo =
+                    videoAdicionalSeleccionado
+
                 val idJugador = jugadorActivoId
 
-                if (idJugador == null || numeroVideo == null ||
+                if (
+                    idJugador == null ||
+                    numeroVideo == null ||
                     numeroVideo !in 1..2
                 ) {
 
                     LaunchedEffect(Unit) {
+
                         navController.navigate("cliente") {
+
                             popUpTo("video_adicional") {
                                 inclusive = true
                             }
@@ -1148,25 +1755,31 @@ fun AppNavigation() {
 
                 } else {
 
-                    // Videos adicionales vistos por el usuario activo.
                     val videosAdicionalesVistos by
-                    coleccionViewModel.videosAdicionalesVistos.collectAsState()
+                    coleccionViewModel
+                        .videosAdicionalesVistos
+                        .collectAsState()
 
-                    // Comprueba si este video ya fue visto.
-                    val yaVisto = videosAdicionalesVistos.any {
-                        it.videoAdicionalId == numeroVideo
-                    }
+                    val yaVisto =
+                        videosAdicionalesVistos.any {
+
+                            it.videoAdicionalId == numeroVideo
+                        }
 
                     VideoEducativoScreen(
+
                         capsula = null,
+
                         videoAdicionalId = numeroVideo,
+
                         yaVisto = yaVisto,
 
-                        // Guarda el video cuando termina.
                         onVideoTerminado = {
-                            coleccionViewModel.registrarVideoAdicionalVisto(
-                                numeroVideo
-                            )
+
+                            coleccionViewModel
+                                .registrarVideoAdicionalVisto(
+                                    numeroVideo
+                                )
                         },
 
                         onVolverColeccion = {
@@ -1177,19 +1790,25 @@ fun AppNavigation() {
             }
 
 
-            // ------------------------------------------
+            // ==========================================
             // SELFIE TURÍSTICA
-            // ------------------------------------------
+            // ==========================================
 
             composable("selfie_turistica") {
 
                 val capsula = resultadoCapsula
+
                 val idJugador = jugadorActivoId
 
-                if (idJugador == null || capsula == null) {
+                if (
+                    idJugador == null ||
+                    capsula == null
+                ) {
 
                     LaunchedEffect(Unit) {
+
                         navController.navigate("cliente") {
+
                             popUpTo("selfie_turistica") {
                                 inclusive = true
                             }
@@ -1199,37 +1818,57 @@ fun AppNavigation() {
                 } else {
 
                     SelfieTuristicaScreen(
+
                         onVolver = {
                             navController.popBackStack()
                         },
 
-                        onFotoGuardada = { ruta, informarResultado ->
+                        onFotoGuardada = {
+                                ruta,
+                                informarResultado ->
 
-                            selfieViewModel.validarYRegistrarSelfie(
-                                rutaFoto = ruta,
-                                codigoQrEsperado = capsula.codigoQr,
-                                puntoId = capsula.puntoId,
-                                capsulaId = capsula.id,
+                            selfieViewModel
+                                .validarYRegistrarSelfie(
 
-                                onResultado = { exito, mensaje ->
-                                    informarResultado(exito, mensaje)
-                                }
-                            )
+                                    rutaFoto = ruta,
+
+                                    codigoQrEsperado =
+                                        capsula.codigoQr,
+
+                                    puntoId = capsula.puntoId,
+
+                                    capsulaId = capsula.id,
+
+                                    onResultado = {
+                                            exito,
+                                            mensaje ->
+
+                                        informarResultado(
+                                            exito,
+                                            mensaje
+                                        )
+                                    }
+                                )
                         }
                     )
                 }
             }
 
-            // ------------------------------------------
+
+            // ==========================================
             // PANTALLA 14: NOTIFICACIONES
-            // ------------------------------------------
+            // ==========================================
 
             composable("notificaciones") {
 
                 if (jugadorActivoId == null) {
 
                     LaunchedEffect(Unit) {
-                        navController.navigate("seleccion_jugador") {
+
+                        navController.navigate(
+                            "seleccion_jugador"
+                        ) {
+
                             popUpTo("notificaciones") {
                                 inclusive = true
                             }
@@ -1237,60 +1876,76 @@ fun AppNavigation() {
                     }
 
                 } else if (
+
                     usuarioActual?.id == jugadorActivoId
+
                 ) {
 
-                    // Notificaciones de la cuenta que inició sesión.
-                    // Funciona para Cliente, Generador y Administrador.
                     NotificacionesScreen(
-                        notificacionesViewModel = notificacionesViewModel,
+
+                        notificacionesViewModel =
+                            notificacionesViewModel,
 
                         onVolver = {
+
                             volverDesdePerfil()
                         },
 
                         onAbrirDestino = { ruta ->
 
-                            // Solo permite abrir rutas válidas
-                            // para el rol que inició sesión.
-                            val destinosPermitidos = when (usuarioActual?.rol) {
+                            // Rutas permitidas según el rol.
+                            val destinosPermitidos =
+                                when (usuarioActual?.rol) {
 
-                                Rol.CLIENTE -> setOf(
-                                    "cliente",
-                                    "mapa",
-                                    "escanear_qr",
-                                    "coleccion",
-                                    "perfil",
-                                    "puntaje_progreso",
-                                    "historial_actividades",
-                                    "contenidos_educativos"
-                                )
+                                    Rol.CLIENTE -> setOf(
 
-                                Rol.GENERADOR -> setOf(
-                                    "contenido",
-                                    "perfil",
-                                    "todos_videos",
-                                    "mapa"
-                                )
+                                        "cliente",
+                                        "mapa",
+                                        "escanear_qr",
+                                        "coleccion",
+                                        "perfil",
+                                        "puntaje_progreso",
+                                        "historial_actividades",
+                                        "contenidos_educativos"
+                                    )
 
-                                Rol.ADMINISTRADOR -> setOf(
-                                    "administrador",
-                                    "perfil",
-                                    "gestion_puntos",
-                                    "gestion_videos",
-                                    "gestion_qr",
-                                    "todos_videos",
-                                    "mapa"
-                                )
+                                    Rol.GENERADOR -> setOf(
 
-                                else -> emptySet()
-                            }
+                                        "contenido",
+                                        "perfil",
+                                        "todos_videos",
+                                        "mapa"
+                                    )
+
+                                    Rol.ADMINISTRADOR -> setOf(
+
+                                        "administrador",
+                                        "perfil",
+                                        "gestion_puntos",
+                                        "gestion_videos",
+                                        "gestion_qr",
+                                        "todos_videos",
+                                        "mapa"
+                                    )
+
+                                    else -> emptySet()
+                                }
 
                             if (ruta in destinosPermitidos) {
-                                navController.navigate(ruta) {
-                                    launchSingleTop = true
+
+                                if (ruta == "escanear_qr") {
+
+                                    abrirEscanerGeneral()
+
+                                } else {
+
+                                    navController.navigate(ruta) {
+                                        launchSingleTop = true
+                                    }
                                 }
+
                             } else {
+
                                 Toast.makeText(
                                     context,
                                     "Esta notificación no tiene una pantalla disponible",
@@ -1301,31 +1956,44 @@ fun AppNavigation() {
                     )
                 }
             }
-            // ------------------------------------------
+
+
+            // ==========================================
             // VIDEO REGISTRADO POR EL ADMINISTRADOR
-            // ------------------------------------------
+            // ==========================================
+
             composable("video_registrado") {
 
                 val video = videoRegistradoSeleccionado
 
                 // Recupera los contenidos publicados.
                 val contenidos by remember(database) {
-                    database.contenidoEducativoDao().obtenerPublicados()
-                }.collectAsState(initial = emptyList())
 
-                // Recupera las cápsulas y los QR descubiertos.
-                val capsulas by coleccionViewModel.capsulas.collectAsState()
+                    database.contenidoEducativoDao()
+                        .obtenerPublicados()
 
+                }.collectAsState(
+                    initial = emptyList()
+                )
+
+                // Recupera las cápsulas educativas.
+                val capsulas by
+                coleccionViewModel.capsulas
+                    .collectAsState()
+
+                // Recupera los descubrimientos del jugador.
                 val descubrimientos by
-                coleccionViewModel.descubrimientosQr.collectAsState()
+                coleccionViewModel.descubrimientosQr
+                    .collectAsState()
 
-                // Recupera los videos vistos con QR.
                 val videosVistos by
-                coleccionViewModel.videosVistos.collectAsState()
+                coleccionViewModel.videosVistos
+                    .collectAsState()
 
-                // Recupera los videos adicionales vistos.
                 val videosAdicionalesVistos by
-                coleccionViewModel.videosAdicionalesVistos.collectAsState()
+                coleccionViewModel
+                    .videosAdicionalesVistos
+                    .collectAsState()
 
                 if (
                     jugadorActivoId == null ||
@@ -1334,10 +2002,13 @@ fun AppNavigation() {
                 ) {
 
                     LaunchedEffect(Unit) {
+
                         navController.navigate("cliente") {
+
                             popUpTo("video_registrado") {
                                 inclusive = true
                             }
+
                             launchSingleTop = true
                         }
                     }
@@ -1346,50 +2017,65 @@ fun AppNavigation() {
 
                     // Busca el contenido asociado al video.
                     val contenido = contenidos.firstOrNull {
+
                         it.id == video.contenidoId
                     }
 
-                    // Busca la cápsula QR generada para ese contenido.
+                    // Busca el QR generado para ese contenido.
                     val capsulaQr = contenido?.let {
-                        val prefijo = "TRISKELEDU-CONTENIDO-${it.id}-"
+
+                        val prefijo =
+                            "TRISKELEDU-CONTENIDO-${it.id}-"
 
                         capsulas.firstOrNull { capsula ->
+
                             capsula.codigoQr.startsWith(prefijo) &&
                                     capsula.estado == "PUBLICADA"
                         }
                     }
 
                     // Comprueba si el contenido requiere QR.
-                    val requiereQr = contenido?.puntoId != null
+                    val requiereQr =
+                        contenido?.puntoId != null
 
-                    // Comprueba si el jugador escaneó el QR.
-                    val qrDescubierto = capsulaQr != null &&
-                            descubrimientos.any {
-                                it.capsulaId == capsulaQr.id
-                            }
+                    // Comprueba si el jugador descubrió el QR.
+                    val qrDescubierto =
+                        capsulaQr != null &&
+                                descubrimientos.any {
 
-                    // Identificador de los videos administrativos sin QR.
+                                    it.capsulaId == capsulaQr.id
+                                }
+
+                    // Identifica los videos sin QR.
                     val identificadorVideo = -video.id
 
                     // Comprueba si el video ya fue visto.
                     val yaVisto = if (requiereQr) {
 
-                        capsulaQr != null && videosVistos.any {
-                            it.capsulaId == capsulaQr.id
-                        }
+                        capsulaQr != null &&
+                                videosVistos.any {
+
+                                    it.capsulaId == capsulaQr.id
+                                }
 
                     } else {
 
                         videosAdicionalesVistos.any {
-                            it.videoAdicionalId == identificadorVideo
+
+                            it.videoAdicionalId ==
+                                    identificadorVideo
                         }
                     }
 
                     if (requiereQr && !qrDescubierto) {
 
-                        // No permite reproducir un video con QR
-                        // antes de escanear su código.
-                        LaunchedEffect(video.id, qrDescubierto) {
+                        // No permite reproducir un video
+                        // antes de descubrir su QR.
+                        LaunchedEffect(
+                            video.id,
+                            qrDescubierto
+                        ) {
+
                             Toast.makeText(
                                 context,
                                 "Primero debes escanear el QR de este video",
@@ -1402,33 +2088,39 @@ fun AppNavigation() {
                     } else {
 
                         VideoEducativoScreen(
+
                             videoRegistrado = video,
+
                             yaVisto = yaVisto,
 
-                            // Registra el video cuando termina.
                             onVideoTerminado = {
 
                                 if (requiereQr) {
 
-                                    // Video con QR:
-                                    // se registra mediante su cápsula.
-                                    if (capsulaQr != null && qrDescubierto) {
-                                        coleccionViewModel.registrarVideoVisto(
-                                            capsulaQr.id
-                                        )
+                                    // Video asociado a un QR.
+                                    if (
+                                        capsulaQr != null &&
+                                        qrDescubierto
+                                    ) {
+
+                                        coleccionViewModel
+                                            .registrarVideoVisto(
+                                                capsulaQr.id
+                                            )
                                     }
 
                                 } else {
 
-                                    // Video sin QR:
-                                    // se registra como video adicional.
-                                    coleccionViewModel.registrarVideoAdministradorVisto(
-                                        video.id
-                                    )
+                                    // Video sin QR.
+                                    coleccionViewModel
+                                        .registrarVideoAdministradorVisto(
+                                            video.id
+                                        )
                                 }
                             },
 
                             onVolverColeccion = {
+
                                 navController.popBackStack()
                             }
                         )
@@ -1437,15 +2129,20 @@ fun AppNavigation() {
             }
 
 
-            // ------------------------------------------
+            // ==========================================
             // PANTALLA 15: MI PERFIL
-            // ------------------------------------------
+            // ==========================================
+
             composable("perfil") {
 
                 if (jugadorActivoId == null) {
 
                     LaunchedEffect(Unit) {
-                        navController.navigate("seleccion_jugador") {
+
+                        navController.navigate(
+                            "seleccion_jugador"
+                        ) {
+
                             popUpTo("perfil") {
                                 inclusive = true
                             }
@@ -1453,33 +2150,42 @@ fun AppNavigation() {
                     }
 
                 } else if (
+
                     usuarioActual?.id == jugadorActivoId
+
                 ) {
 
-                    // Mismo perfil para los tres roles.
+                    // Perfil compartido por los tres roles.
                     PerfilScreen(
+
                         sessionViewModel = sessionViewModel,
-                        coleccionViewModel = coleccionViewModel,
+
+                        coleccionViewModel =
+                            coleccionViewModel,
 
                         onCerrarSesion = {
+
                             cerrarSesionActual()
                         },
 
                         onVolver = {
+
                             volverDesdePerfil()
                         },
 
                         onVerNotificaciones = {
-                            navController.navigate("notificaciones") {
+
+                            navController.navigate(
+                                "notificaciones"
+                            ) {
                                 launchSingleTop = true
                             }
                         }
                     )
-
                 }
             }
 
-        } // NavHost
+        } // Fin del NavHost.
 
-    } // Scaffold
+    } // Fin del Scaffold.
 }

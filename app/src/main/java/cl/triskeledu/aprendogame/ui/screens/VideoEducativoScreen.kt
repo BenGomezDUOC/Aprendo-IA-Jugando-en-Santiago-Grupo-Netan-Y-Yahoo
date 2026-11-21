@@ -18,13 +18,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import cl.triskeledu.aprendogame.R
+import cl.triskeledu.aprendogame.data.local.AppDatabase
 import cl.triskeledu.aprendogame.model.Capsula
 import cl.triskeledu.aprendogame.model.VideoRegistrado
+import kotlinx.coroutines.delay
 
 @Composable
 fun VideoEducativoScreen(
@@ -36,156 +39,370 @@ fun VideoEducativoScreen(
     videoRegistrado: VideoRegistrado? = null
 ) {
 
+    // -------------------------------------------------
     // COLORES DE LA INTERFAZ
+    // -------------------------------------------------
+
     val azulOscuro = Color(0xFF203653)
     val azulPrincipal = Color(0xFF2563EB)
     val fondoPantalla = Color(0xFFF5F7FC)
     val textoPrincipal = Color(0xFF1E293B)
     val textoSecundario = Color(0xFF64748B)
 
-    // IDENTIFICADOR DEL VIDEO
+    val context = LocalContext.current
+
+    val database = remember(context) {
+
+        AppDatabase.getInstance(
+            context.applicationContext
+        )
+    }
+
     val puntoId = capsula?.puntoId
 
-    // ESTADOS DEL REPRODUCTOR
-    var videoTerminado by remember(
-        capsula?.id, videoAdicionalId, videoRegistrado?.id
+    // -------------------------------------------------
+    // IDENTIFICAR LOS QR ADMINISTRATIVOS
+    // -------------------------------------------------
+
+    val esQrAdministrativo =
+        capsula?.codigoQr?.startsWith(
+            "TRISKELEDU-CONTENIDO-"
+        ) == true
+
+    val contenidoId = remember(capsula?.codigoQr) {
+
+        Regex("^TRISKELEDU-CONTENIDO-(\\d+)-")
+            .find(capsula?.codigoQr.orEmpty())
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.toIntOrNull()
+    }
+
+    // Recupera los videos creados por el administrador.
+    val videosRegistrados by remember(database) {
+
+        database.videoRegistradoDao()
+            .obtenerTodos()
+
+    }.collectAsState(initial = emptyList())
+
+    // Si se abre desde un QR administrativo,
+    // recupera el video relacionado con ese contenido.
+    val videoAsociado = remember(
+        videosRegistrados,
+        contenidoId,
+        capsula?.urlVideo
     ) {
+
+        if (contenidoId == null) {
+
+            null
+
+        } else {
+
+            val candidatos =
+                videosRegistrados.filter {
+
+                    it.contenidoId == contenidoId &&
+                            it.urlVideo.isNotBlank()
+                }
+
+            candidatos.firstOrNull {
+
+                it.urlVideo == capsula?.urlVideo
+
+            } ?: candidatos.singleOrNull()
+        }
+    }
+
+    // Prioriza el video recibido directamente.
+    // Si viene desde un QR, utiliza el video asociado.
+    val videoReal = videoRegistrado ?: videoAsociado
+
+    val esContenidoAdministrativo =
+        videoRegistrado != null || esQrAdministrativo
+
+    // -------------------------------------------------
+    // VIDEO LOCAL DE LOS CONTENIDOS ORIGINALES
+    // -------------------------------------------------
+
+    val videoLocal = if (esContenidoAdministrativo) {
+
+        // Nunca reproduce el video original de un lugar
+        // cuando el contenido pertenece al administrador.
+        null
+
+    } else {
+
+        when (videoAdicionalId) {
+
+            1 -> R.raw.video_ia_cotidiana
+            2 -> R.raw.video_etica_ia
+
+            else -> when (puntoId) {
+
+                1 -> R.raw.video_plaza_armas
+                2 -> R.raw.video_cerro_santa_lucia
+                3 -> R.raw.video_cerro_san_cristobal
+                4 -> R.raw.video_palacio_de_la_moneda
+                5 -> R.raw.video_parque_forestal
+                6 -> R.raw.video_barrio_bellavista
+
+                else -> null
+            }
+        }
+    }
+
+    // URL del contenido administrativo.
+    val urlVideo = videoReal?.urlVideo
+        ?.takeIf { it.isNotBlank() }
+        ?: capsula?.urlVideo.orEmpty()
+
+    // -------------------------------------------------
+    // ESTADOS DEL REPRODUCTOR
+    // -------------------------------------------------
+
+    var videoTerminado by remember(
+        capsula?.id,
+        videoAdicionalId,
+        videoReal?.id,
+        urlVideo
+    ) {
+
         mutableStateOf(false)
     }
 
     var videoIniciado by remember(
-        capsula?.id, videoAdicionalId, videoRegistrado?.id
+        capsula?.id,
+        videoAdicionalId,
+        videoReal?.id,
+        urlVideo
     ) {
+
         mutableStateOf(false)
     }
 
     var videoPreparado by remember(
-        capsula?.id, videoAdicionalId, videoRegistrado?.id
+        capsula?.id,
+        videoAdicionalId,
+        videoReal?.id,
+        urlVideo
     ) {
+
         mutableStateOf(false)
     }
 
     var videoViewInstance by remember(
-        capsula?.id, videoAdicionalId, videoRegistrado?.id
+        capsula?.id,
+        videoAdicionalId,
+        videoReal?.id,
+        urlVideo
     ) {
+
         mutableStateOf<VideoView?>(null)
     }
 
-    // EVITA NOTIFICAR DOS VECES EL MISMO FINAL
+    // Evita registrar dos veces la finalización.
     var finalRegistrado by remember(
-        capsula?.id, videoAdicionalId, videoRegistrado?.id
+        capsula?.id,
+        videoAdicionalId,
+        videoRegistrado?.id
     ) {
+
         mutableStateOf(false)
     }
 
+    // -------------------------------------------------
     // TÍTULO DEL VIDEO
-    val tituloVideo = videoRegistrado?.titulo
-        ?: when (videoAdicionalId) {
+    // -------------------------------------------------
+
+    val tituloVideo = if (esContenidoAdministrativo) {
+
+        videoReal?.titulo
+            ?: capsula?.titulo
+            ?: "Video educativo"
+
+    } else {
+
+        when (videoAdicionalId) {
+
             1 -> "IA en nuestra vida cotidiana"
             2 -> "Ética y uso responsable de la IA"
 
             else -> when (puntoId) {
+
                 1 -> "¿Qué es la Inteligencia Artificial?"
                 2 -> "Reconocimiento de imágenes"
                 3 -> "IA y medioambiente"
                 4 -> "Aprendizaje automático"
                 5 -> "Redes neuronales"
                 6 -> "Inteligencia Artificial generativa"
-                else -> capsula?.titulo ?: "Video educativo"
+
+                else -> capsula?.titulo
+                    ?: "Video educativo"
             }
         }
+    }
 
+    // -------------------------------------------------
     // AUTOR DEL VIDEO
-    // Prioridad: autor ingresado por el administrador.
-    // Si es un video antiguo, conserva su autor original.
-    val autor = videoRegistrado?.autor
-        ?.trim()
-        ?.takeIf { it.isNotEmpty() }
-        ?: when (videoAdicionalId) {
+    // -------------------------------------------------
+
+    val autor = if (esContenidoAdministrativo) {
+
+        videoReal?.autor
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?: "Triskeledu"
+
+    } else {
+
+        when (videoAdicionalId) {
+
             1 -> "Magdiel Reynoso"
             2 -> "Benjamín Gómez"
 
             else -> when (puntoId) {
+
                 1 -> "Magdiel Reynoso"
                 2 -> "Fernando Zapata"
                 3 -> "Juan Pablo Taulis"
                 4 -> "Benjamín Gómez"
                 5 -> "Juan Pablo Taulis"
                 6 -> "Fernando Zapata"
+
                 else -> "Triskeledu"
             }
         }
+    }
 
+    // -------------------------------------------------
     // DURACIÓN DEL VIDEO
-    // El administrador la ingresa como 2:35.
-    // Room la guarda como 155000 milisegundos.
-    // Aquí vuelve a mostrarse como 2:35.
-    val duracion = videoRegistrado?.duracion
-        ?.takeIf { it > 0L }
-        ?.let { milisegundos ->
-            val totalSegundos = milisegundos / 1000
-            val minutos = totalSegundos / 60
-            val segundos = totalSegundos % 60
-            "%d:%02d".format(minutos, segundos)
-        }
-        ?: when (videoAdicionalId) {
+    // -------------------------------------------------
+
+    val duracion = if (esContenidoAdministrativo) {
+
+        videoReal?.duracion
+            ?.takeIf { it > 0L }
+            ?.let { milisegundos ->
+
+                val totalSegundos =
+                    milisegundos / 1000
+
+                val minutos = totalSegundos / 60
+
+                val segundos = totalSegundos % 60
+
+                "%d:%02d".format(
+                    minutos,
+                    segundos
+                )
+            } ?: "--:--"
+
+    } else {
+
+        when (videoAdicionalId) {
+
             1 -> "0:46"
             2 -> "0:47"
 
             else -> when (puntoId) {
+
                 1 -> "0:44"
                 2 -> "0:45"
                 3 -> "0:47"
                 4 -> "0:48"
                 5 -> "0:48"
                 6 -> "0:46"
+
                 else -> "--:--"
             }
         }
+    }
 
-    // TEMA
-    val tema = when (videoAdicionalId) {
-        1 -> "IA en la vida cotidiana"
-        2 -> "Ética de la Inteligencia Artificial"
+    // -------------------------------------------------
+    // TEMA DEL VIDEO
+    // -------------------------------------------------
 
-        else -> when (puntoId) {
-            1 -> "Introducción a la IA"
-            2 -> "Reconocimiento de imágenes"
-            3 -> "IA y medioambiente"
-            4 -> "Aprendizaje automático"
-            5 -> "Redes neuronales"
-            6 -> "IA generativa"
-            else -> "Fundamentos de IA"
+    val tema = if (esContenidoAdministrativo) {
+
+        capsula?.categoria
+            ?.takeIf { it.isNotBlank() }
+            ?: "Inteligencia Artificial"
+
+    } else {
+
+        when (videoAdicionalId) {
+
+            1 -> "IA en la vida cotidiana"
+            2 -> "Ética de la Inteligencia Artificial"
+
+            else -> when (puntoId) {
+
+                1 -> "Introducción a la IA"
+                2 -> "Reconocimiento de imágenes"
+                3 -> "IA y medioambiente"
+                4 -> "Aprendizaje automático"
+                5 -> "Redes neuronales"
+                6 -> "IA generativa"
+
+                else -> "Fundamentos de IA"
+            }
         }
     }
 
+    // -------------------------------------------------
     // LUGAR
-    val lugar = if (videoRegistrado != null) {
+    // -------------------------------------------------
+
+    val lugar = if (esContenidoAdministrativo) {
+
         "Nuevo contenido educativo"
+
     } else {
+
         when (videoAdicionalId) {
+
             1, 2 -> "Contenido educativo adicional"
 
             else -> when (puntoId) {
+
                 1 -> "Plaza de Armas"
                 2 -> "Cerro Santa Lucía"
                 3 -> "Cerro San Cristóbal"
                 4 -> "Palacio de La Moneda"
                 5 -> "Parque Forestal"
                 6 -> "Barrio Bellavista"
+
                 else -> "Triskeledu"
             }
         }
     }
 
-    // DESCRIPCIÓN
-    val descripcionVideo = videoRegistrado?.descripcion
-        ?: when (videoAdicionalId) {
+    // -------------------------------------------------
+    // DESCRIPCIÓN DEL VIDEO
+    // -------------------------------------------------
+
+    val descripcionVideo = if (
+        esContenidoAdministrativo
+    ) {
+
+        videoReal?.descripcion
+            ?.takeIf { it.isNotBlank() }
+            ?: capsula?.descripcion
+                ?.takeIf { it.isNotBlank() }
+            ?: "Descubre nuevos conocimientos sobre Inteligencia Artificial."
+
+    } else {
+
+        when (videoAdicionalId) {
+
             1 -> "Descubre cómo utilizamos la inteligencia artificial en nuestra vida cotidiana, por ejemplo, en los asistentes virtuales, las recomendaciones y las aplicaciones móviles."
 
             2 -> "Aprende sobre la importancia de utilizar la inteligencia artificial de manera ética y responsable, respetando la privacidad, evitando los prejuicios y verificando la información."
 
             else -> when (puntoId) {
+
                 1 -> "Aprende qué es la inteligencia artificial, cómo reconoce imágenes, comprende preguntas y ayuda a estudiar la historia de Santiago."
 
                 2 -> "Descubre cómo la visión artificial permite reconocer objetos, plantas y monumentos mediante patrones aprendidos de imágenes."
@@ -198,58 +415,60 @@ fun VideoEducativoScreen(
 
                 6 -> "Aprende cómo la inteligencia artificial generativa puede crear textos, imágenes y sonidos, y por qué debemos utilizarla responsablemente."
 
-                else -> capsula?.descripcion?.ifBlank {
-                    "Descubre nuevos conocimientos sobre Inteligencia Artificial."
-                } ?: "Descubre nuevos conocimientos sobre Inteligencia Artificial."
-            }
-        }
-
-    // VIDEO LOCAL DE LOS CONTENIDOS ANTIGUOS
-    val videoLocal = if (videoRegistrado != null) {
-        null
-    } else {
-        when (videoAdicionalId) {
-            1 -> R.raw.video_ia_cotidiana
-            2 -> R.raw.video_etica_ia
-
-            else -> when (puntoId) {
-                1 -> R.raw.video_plaza_armas
-                2 -> R.raw.video_cerro_santa_lucia
-                3 -> R.raw.video_cerro_san_cristobal
-                4 -> R.raw.video_palacio_de_la_moneda
-                5 -> R.raw.video_parque_forestal
-                6 -> R.raw.video_barrio_bellavista
-                else -> null
+                else -> capsula?.descripcion
+                    ?.ifBlank {
+                        "Descubre nuevos conocimientos sobre Inteligencia Artificial."
+                    }
+                    ?: "Descubre nuevos conocimientos sobre Inteligencia Artificial."
             }
         }
     }
 
-    // VIDEO REGISTRADO POR EL ADMINISTRADOR
-    val urlVideo = videoRegistrado?.urlVideo
-        ?: capsula?.urlVideo.orEmpty()
-
+    // -------------------------------------------------
     // REGISTRAR FINALIZACIÓN DEL VIDEO
+    // -------------------------------------------------
+
+    val yaVistoActual by rememberUpdatedState(yaVisto)
+
+    val callbackTerminado by rememberUpdatedState(
+        onVideoTerminado
+    )
+
     fun finalizarVideo() {
+
         videoTerminado = true
+
         videoIniciado = false
 
-        if (!yaVisto && !finalRegistrado) {
+        if (!yaVistoActual && !finalRegistrado) {
+
             finalRegistrado = true
-            onVideoTerminado()
+
+            callbackTerminado()
         }
     }
 
-    // DETENER EL VIDEO AL SALIR
+    // Detiene el reproductor al cambiar de video
+    // o al abandonar la pantalla.
     DisposableEffect(
         capsula?.id,
         videoAdicionalId,
-        videoRegistrado?.id
+        videoReal?.id,
+        urlVideo,
+        videoLocal
     ) {
+
+        var reproductorAnterior: VideoView? = null
+
         onDispose {
-            videoViewInstance?.stopPlayback()
-            videoViewInstance = null
+
+            reproductorAnterior?.stopPlayback()
         }
     }
+
+    // =================================================
+    // INTERFAZ PRINCIPAL
+    // =================================================
 
     Column(
         modifier = Modifier
@@ -268,14 +487,21 @@ fun VideoEducativoScreen(
 
             IconButton(
                 onClick = {
+
                     videoViewInstance?.stopPlayback()
+
                     onVolverColeccion()
                 },
-                modifier = Modifier.align(Alignment.CenterStart)
+                modifier = Modifier.align(
+                    Alignment.CenterStart
+                )
             ) {
+
                 Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Volver a la pantalla anterior",
+                    imageVector =
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription =
+                        "Volver a la pantalla anterior",
                     tint = Color.White
                 )
             }
@@ -295,7 +521,10 @@ fun VideoEducativoScreen(
                 .padding(16.dp)
         ) {
 
+            // -----------------------------------------
             // TARJETA DEL REPRODUCTOR
+            // -----------------------------------------
+
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(18.dp),
@@ -307,7 +536,10 @@ fun VideoEducativoScreen(
                 )
             ) {
 
-                if (videoLocal != null || urlVideo.isNotBlank()) {
+                if (
+                    videoLocal != null ||
+                    urlVideo.isNotBlank()
+                ) {
 
                     Box(
                         modifier = Modifier
@@ -316,48 +548,86 @@ fun VideoEducativoScreen(
                         contentAlignment = Alignment.Center
                     ) {
 
-                        AndroidView(
-                            factory = { context ->
+                        key(
+                            capsula?.id,
+                            videoAdicionalId,
+                            videoReal?.id,
+                            urlVideo,
+                            videoLocal
+                        ) {
 
-                                VideoView(context).apply {
+                            AndroidView(
 
-                                    videoViewInstance = this
+                                factory = { contexto ->
 
-                                    if (videoLocal != null) {
+                                    VideoView(contexto).apply {
 
-                                        val uri = Uri.parse(
-                                            "android.resource://${context.packageName}/raw/" +
-                                                    context.resources.getResourceEntryName(videoLocal)
-                                        )
+                                        videoViewInstance = this
 
-                                        setVideoURI(uri)
+                                        // VIDEO ORIGINAL
+                                        if (videoLocal != null) {
 
-                                    } else {
+                                            val uri = Uri.parse(
+                                                "android.resource://${contexto.packageName}/raw/" +
+                                                        contexto.resources.getResourceEntryName(
+                                                            videoLocal
+                                                        )
+                                            )
 
-                                        setVideoURI(Uri.parse(urlVideo))
+                                            setVideoURI(uri)
+
+                                        } else {
+
+                                            // VIDEO ADMINISTRATIVO
+                                            val uri = if (
+                                                urlVideo.startsWith("/")
+                                            ) {
+
+                                                Uri.fromFile(
+                                                    java.io.File(urlVideo)
+                                                )
+
+                                            } else {
+
+                                                Uri.parse(urlVideo)
+                                            }
+
+                                            setVideoURI(uri)
+                                        }
+
+                                        val controles =
+                                            MediaController(contexto)
+
+                                        setMediaController(controles)
+
+                                        controles.setAnchorView(this)
+
+                                        setOnPreparedListener {
+
+                                            videoPreparado = true
+                                        }
+
+                                        setOnCompletionListener {
+
+                                            finalizarVideo()
+                                        }
                                     }
+                                },
 
-                                    val controles = MediaController(context)
+                                modifier = Modifier.fillMaxSize(),
 
-                                    setMediaController(controles)
-                                    controles.setAnchorView(this)
+                                onRelease = { reproductor ->
 
-                                    setOnPreparedListener {
-                                        videoPreparado = true
-                                    }
-
-                                    setOnCompletionListener {
-                                        finalizarVideo()
-                                    }
+                                    reproductor.stopPlayback()
                                 }
-                            },
-                            modifier = Modifier.fillMaxSize()
-                        )
+                            )
+                        }
 
-                        // DETECTAR FINAL DEL VIDEO
+                        // Detectar cuando termina el video.
                         LaunchedEffect(
                             videoIniciado,
-                            videoViewInstance
+                            videoViewInstance,
+                            yaVisto
                         ) {
 
                             if (
@@ -368,24 +638,30 @@ fun VideoEducativoScreen(
 
                                 while (true) {
 
-                                    kotlinx.coroutines.delay(400)
+                                    delay(400)
 
-                                    val reproductor = videoViewInstance
+                                    val reproductor =
+                                        videoViewInstance
 
                                     if (
                                         reproductor != null &&
                                         reproductor.isPlaying
                                     ) {
 
-                                        val duracionReal = reproductor.duration
-                                        val posicionActual = reproductor.currentPosition
+                                        val duracionReal =
+                                            reproductor.duration
+
+                                        val posicionActual =
+                                            reproductor.currentPosition
 
                                         if (
                                             duracionReal > 0 &&
-                                            posicionActual >= duracionReal - 400
+                                            posicionActual >=
+                                            duracionReal - 400
                                         ) {
 
                                             finalizarVideo()
+
                                             break
                                         }
                                     }
@@ -393,27 +669,33 @@ fun VideoEducativoScreen(
                             }
                         }
 
-                        // BOTÓN REPRODUCIR
+                        // BOTÓN DE REPRODUCCIÓN
                         if (!videoIniciado) {
 
                             IconButton(
                                 onClick = {
 
-                                    videoViewInstance?.let { reproductor ->
+                                    videoViewInstance?.let {
+                                            reproductor ->
 
                                         if (videoPreparado) {
 
                                             if (videoTerminado) {
+
                                                 reproductor.seekTo(0)
+
                                                 videoTerminado = false
                                             }
 
                                             reproductor.start()
+
                                             videoIniciado = true
                                         }
                                     }
                                 },
+
                                 enabled = videoPreparado,
+
                                 modifier = Modifier
                                     .size(72.dp)
                                     .background(
@@ -423,8 +705,10 @@ fun VideoEducativoScreen(
                             ) {
 
                                 Icon(
-                                    imageVector = Icons.Default.PlayArrow,
-                                    contentDescription = "Reproducir video",
+                                    imageVector =
+                                        Icons.Default.PlayArrow,
+                                    contentDescription =
+                                        "Reproducir video",
                                     tint = Color.White,
                                     modifier = Modifier.size(42.dp)
                                 )
@@ -451,7 +735,10 @@ fun VideoEducativoScreen(
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            // TARJETA DE INFORMACIÓN
+            // -----------------------------------------
+            // TARJETA DE INFORMACIÓN DEL VIDEO
+            // -----------------------------------------
+
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(18.dp),
@@ -486,7 +773,6 @@ fun VideoEducativoScreen(
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // AUTOR REGISTRADO
                     Text(
                         text = "Autor: $autor",
                         fontSize = 14.sp,
@@ -495,7 +781,6 @@ fun VideoEducativoScreen(
 
                     Spacer(modifier = Modifier.height(5.dp))
 
-                    // DURACIÓN REGISTRADA
                     Text(
                         text = "Duración: $duracion",
                         fontSize = 14.sp,
@@ -521,7 +806,10 @@ fun VideoEducativoScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            // -----------------------------------------
             // TARJETA DEL TEMA
+            // -----------------------------------------
+
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
@@ -564,7 +852,10 @@ fun VideoEducativoScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            // -----------------------------------------
             // MENSAJE DE VIDEO VISTO
+            // -----------------------------------------
+
             if (yaVisto || videoTerminado) {
 
                 Row(
