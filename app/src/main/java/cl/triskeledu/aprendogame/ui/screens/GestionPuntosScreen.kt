@@ -1,4 +1,5 @@
 
+
 package cl.triskeledu.aprendogame.ui.screens
 
 import android.content.Intent
@@ -79,7 +80,33 @@ fun GestionPuntosScreen(
 
     val ocupado = estado.ocupado
 
+    var puntoPendienteEliminar by remember { mutableStateOf<cl.triskeledu.aprendogame.model.PuntoInteres?>(null) }
+
+
     val radioMetros = estado.radioMetros
+
+    puntoPendienteEliminar?.let { punto ->
+        AlertDialog(
+            onDismissRequest = { if (!ocupado) puntoPendienteEliminar = null },
+            title = { Text("Eliminar punto turístico") },
+            text = { Text("¿Eliminar '${punto.nombre}' de MySQL? Esta acción no se puede deshacer. Los puntos con cápsulas o contenidos asociados están protegidos.") },
+            confirmButton = {
+                TextButton(
+                    enabled = !ocupado,
+                    onClick = {
+                        puntoPendienteEliminar = null
+                        gestionViewModel.eliminarPunto(punto)
+                    }
+                ) { Text("Eliminar", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !ocupado,
+                    onClick = { puntoPendienteEliminar = null }
+                ) { Text("Cancelar") }
+            }
+        )
+    }
 
     // -------------------------------------------------
     // SELECCIONAR FOTOGRAFÍA
@@ -822,6 +849,23 @@ fun GestionPuntosScreen(
                 MaterialTheme.typography.titleMedium
         )
 
+        // Reintenta migrar los puntos pendientes de Room a MySQL y refresca la lista.
+        // El ViewModel informa cualquier error de servidor mediante estado.mensaje.
+        OutlinedButton(
+            onClick = { gestionViewModel.sincronizarPuntos() },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !ocupado
+        ) {
+            Text("Sincronizar puntos con MySQL")
+        }
+
+        if (estado.mensajeError && estado.mensaje.isNotBlank()) {
+            Text(
+                text = estado.mensaje,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+
         if (puntos.isEmpty()) {
 
             Text(
@@ -917,6 +961,16 @@ fun GestionPuntosScreen(
 
                             Text("Editar")
                         }
+
+
+                        OutlinedButton(
+                            onClick = { puntoPendienteEliminar = punto },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !ocupado,
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error
+                            )
+                        ) { Text("Eliminar") }
                     }
                 }
             }
@@ -1072,3 +1126,4 @@ private fun VistaPreviaPuntoTuristico(
         }
     )
 }
+

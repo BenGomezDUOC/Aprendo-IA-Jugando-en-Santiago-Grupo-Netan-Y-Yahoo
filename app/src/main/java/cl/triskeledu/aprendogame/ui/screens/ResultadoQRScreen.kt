@@ -1,9 +1,10 @@
-
 package cl.triskeledu.aprendogame.ui.screens
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import java.net.HttpURLConnection
+import java.net.URL
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.RepeatMode
@@ -37,10 +38,58 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cl.triskeledu.aprendogame.R
 import cl.triskeledu.aprendogame.data.local.AppDatabase
+import cl.triskeledu.aprendogame.data.local.SessionManager
+import cl.triskeledu.aprendogame.data.remote.RetrofitClient
 import cl.triskeledu.aprendogame.model.Capsula
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+
+
+// Servidor multimedia de ms-localizaciones en el emulador.
+// La dirección se corresponde con el HOST 10.0.2.2 de RetrofitClient.
+private const val BASE_MULTIMEDIA = "http://10.0.2.2:8083"
+
+private fun urlMultimedia(ruta: String): String? {
+    val entrada = ruta.trim()
+    return when {
+        entrada.startsWith("/api/localizaciones/multimedia/") ->
+            BASE_MULTIMEDIA + entrada
+        entrada.startsWith("$BASE_MULTIMEDIA/api/localizaciones/multimedia/") ->
+            entrada
+        else -> null
+    }
+}
+
+private fun cargarMiniaturaSegura(
+    context: android.content.Context,
+    ruta: String,
+    authorization: String?
+): Bitmap? = runCatching {
+    if (ruta.isBlank()) return@runCatching null
+    val remota = urlMultimedia(ruta)
+    if (remota != null) {
+        if (authorization.isNullOrBlank()) return@runCatching null
+        val conexion = (URL(remota).openConnection() as HttpURLConnection)
+        try {
+            conexion.setRequestProperty("Authorization", authorization)
+            conexion.connectTimeout = 10000
+            conexion.readTimeout = 15000
+            if (conexion.responseCode !in 200..299) return@runCatching null
+            conexion.inputStream.use { BitmapFactory.decodeStream(it) }
+        } finally {
+            conexion.disconnect()
+        }
+    } else {
+        val uri = Uri.parse(ruta)
+        when (uri.scheme) {
+            "content", "file" -> context.contentResolver
+                .openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+            null -> BitmapFactory.decodeFile(ruta)
+            else -> null
+        }
+    }
+}.getOrNull()
 
 @Composable
 fun ResultadoQRScreen(
@@ -84,134 +133,95 @@ fun ResultadoQRScreen(
     }
 
     // -------------------------------------------------
-    // VIDEOS REGISTRADOS POR EL ADMINISTRADOR
+    // VIDEOS Y MINIATURAS: MYSQL PRIMERO, ROOM COMO RESPALDO
     // -------------------------------------------------
 
     val videosRegistrados by remember(db) {
-
         db.videoRegistradoDao().obtenerTodos()
-
     }.collectAsState(initial = emptyList())
 
-    val videoAsociado = remember(
-        videosRegistrados,
-        contenidoId,
-        capsula.urlVideo
+    // El ID del QR remoto puede ser distinto del ID de Room.
+    // Para identificar el video correcto consultamos la cápsula POR SU CÓDIGO QR.
+    data class MultimediaQr(val miniatura: String, val video: String)
+
+    val multimediaRemota by produceState<MultimediaQr?>(
+        initialValue = null,
+        key1 = capsula.codigoQr
     ) {
-
-        if (contenidoId == null) {
-
-            null
-
-        } else {
-
-            val candidatos = videosRegistrados.filter {
-                it.contenidoId == contenidoId &&
-                        it.urlVideo.isNotBlank()
-            }
-
-            candidatos.firstOrNull {
-                it.urlVideo == capsula.urlVideo
-            } ?: candidatos.singleOrNull()
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                val auth = SessionManager(context.applicationContext)
+                    .obtenerAuthorizationHeader() ?: return@runCatching null
+                val respuestaCapsulas = RetrofitClient.localizacionesApi
+                    .obtenerCapsulasBackend(auth)
+                if (!respuestaCapsulas.isSuccessful) return@runCatching null
+                val capsulaRemota = respuestaCapsulas.body().orEmpty()
+                    .singleOrNull { it.codigoQr == capsula.codigoQr && it.estado == "PUBLICADA" }
+                    ?: return@runCatching null
+                val respuestaVideos = RetrofitClient.localizacionesApi
+                    .obtenerVideos(auth)
+                if (!respuestaVideos.isSuccessful) return@runCatching null
+                val remoto = respuestaVideos.body().orEmpty()
+                    .singleOrNull { it.id == capsulaRemota.videoId }
+                    ?: return@runCatching null
+                MultimediaQr(remoto.urlMiniatura, remoto.urlVideo)
+            }.getOrNull()
         }
     }
 
-    // -------------------------------------------------
-    // VIDEOS ORIGINALES ALMACENADOS EN RES/RAW
-    // -------------------------------------------------
-
-    val videoLocal = if (!esQrAdministrativo) {
-
-        when (capsula.puntoId) {
-
-            1 -> R.raw.video_plaza_armas
-            2 -> R.raw.video_cerro_santa_lucia
-            3 -> R.raw.video_cerro_san_cristobal
-            4 -> R.raw.video_palacio_de_la_moneda
-            5 -> R.raw.video_parque_forestal
-            6 -> R.raw.video_barrio_bellavista
-
-            else -> null
+    val videoAsociado = remember(videosRegistrados, contenidoId, capsula.urlVideo) {
+        val candidatos = videosRegistrados.filter { video ->
+            video.urlVideo.isNotBlank() &&
+                    (video.urlVideo == capsula.urlVideo ||
+                            (contenidoId != null && video.contenidoId == contenidoId))
         }
-
-    } else {
-
-        null
+        candidatos.firstOrNull { it.urlVideo == capsula.urlVideo }
+            ?: candidatos.singleOrNull()
     }
 
-    // -------------------------------------------------
-    // MINIATURAS ORIGINALES EN RES/DRAWABLE
-    // -------------------------------------------------
+    // Mantener miniaturas y videos integrados en res/raw y res/drawable.
+    val videoLocal = if (!esQrAdministrativo) when (capsula.puntoId) {
+        1 -> R.raw.video_plaza_armas
+        2 -> R.raw.video_cerro_santa_lucia
+        3 -> R.raw.video_cerro_san_cristobal
+        4 -> R.raw.video_palacio_de_la_moneda
+        5 -> R.raw.video_parque_forestal
+        6 -> R.raw.video_barrio_bellavista
+        else -> null
+    } else null
 
-    val miniaturaLocal = if (!esQrAdministrativo) {
+    val miniaturaLocal = if (!esQrAdministrativo) when (capsula.puntoId) {
+        1 -> R.drawable.miniatura_plaza_armas
+        2 -> R.drawable.miniatura_santa_lucia
+        3 -> R.drawable.miniatura_san_cristobal
+        4 -> R.drawable.miniatura_la_moneda
+        5 -> R.drawable.miniatura_parque_forestal
+        6 -> R.drawable.miniatura_bellavista
+        else -> null
+    } else null
 
-        when (capsula.puntoId) {
+    val rutaMiniatura = multimediaRemota?.miniatura
+        ?.takeIf { it.isNotBlank() }
+        ?: videoAsociado?.urlMiniatura.orEmpty()
+    val rutaVideo = multimediaRemota?.video
+        ?.takeIf { it.isNotBlank() }
+        ?: videoAsociado?.urlVideo?.takeIf { it.isNotBlank() }
+        ?: capsula.urlVideo
 
-            1 -> R.drawable.miniatura_plaza_armas
-            2 -> R.drawable.miniatura_santa_lucia
-            3 -> R.drawable.miniatura_san_cristobal
-            4 -> R.drawable.miniatura_la_moneda
-            5 -> R.drawable.miniatura_parque_forestal
-            6 -> R.drawable.miniatura_bellavista
-
-            else -> null
-        }
-
-    } else {
-
-        null
-    }
-
-    // -------------------------------------------------
-    // MINIATURAS REGISTRADAS POR EL ADMINISTRADOR
-    // -------------------------------------------------
-
-    val rutaMiniatura =
-        videoAsociado?.urlMiniatura.orEmpty()
-
+    // Mostrar exclusivamente la miniatura elegida por el administrador.
+    // Si está vacía o no se puede cargar, se muestra el icono de video.
     val miniatura by produceState<Bitmap?>(
         initialValue = null,
         key1 = rutaMiniatura
     ) {
-
-        value = withContext(Dispatchers.IO) {
-
-            runCatching {
-
-                if (rutaMiniatura.isBlank()) {
-
-                    null
-
-                } else {
-
-                    val uri = Uri.parse(rutaMiniatura)
-
-                    when (uri.scheme) {
-
-                        "content" -> {
-
-                            context.contentResolver
-                                .openInputStream(uri)
-                                ?.use(BitmapFactory::decodeStream)
-                        }
-
-                        "file" -> {
-
-                            uri.path?.let(
-                                BitmapFactory::decodeFile
-                            )
-                        }
-
-                        else -> {
-
-                            BitmapFactory.decodeFile(
-                                rutaMiniatura
-                            )
-                        }
-                    }
-                }
-
-            }.getOrNull()
+        value = if (rutaMiniatura.isBlank()) {
+            null
+        } else {
+            withContext(Dispatchers.IO) {
+                val auth = SessionManager(context.applicationContext)
+                    .obtenerAuthorizationHeader()
+                cargarMiniaturaSegura(context, rutaMiniatura, auth)
+            }
         }
     }
 
@@ -224,7 +234,7 @@ fun ResultadoQRScreen(
     val videoDisponible =
         videoLocal != null ||
                 capsula.urlVideo.isNotBlank() ||
-                !videoAsociado?.urlVideo.isNullOrBlank()
+                rutaVideo.isNotBlank()
 
     // -------------------------------------------------
     // ANIMACIÓN DEL TROFEO
@@ -590,3 +600,4 @@ fun ResultadoQRScreen(
         }
     }
 }
+
