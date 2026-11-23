@@ -35,4 +35,6 @@ interface PuntoInteresDao {
     // Registra un nuevo punto turístico sin reemplazar otro existente.
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun crearPunto(punto: PuntoInteres): Long
+    @Query("DELETE FROM puntos_interes WHERE id = :id")
+    suspend fun eliminarPuntoPorId(id: Int)
 }

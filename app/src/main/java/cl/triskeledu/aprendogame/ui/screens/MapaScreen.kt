@@ -1,4 +1,4 @@
-﻿package cl.triskeledu.aprendogame.ui.screens
+package cl.triskeledu.aprendogame.ui.screens
 
 import android.Manifest
 import android.content.Context
@@ -41,6 +41,7 @@ import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
+import androidx.compose.ui.text.style.TextOverflow
 
 @Composable
 fun MapaScreen(
@@ -139,7 +140,10 @@ fun MapaScreen(
                     controller.setCenter(GeoPoint(-33.4372, -70.6506))
 
                     val locationOverlay = MyLocationNewOverlay(GpsMyLocationProvider(ctx), this)
-                    locationOverlay.enableMyLocation()
+                    if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+                        ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                        locationOverlay.enableMyLocation()
+                    }
                     overlays.add(locationOverlay)
 
                     mapViewRef = this
@@ -277,19 +281,29 @@ fun MapaScreen(
                     elevation = CardDefaults.cardElevation(defaultElevation = 12.dp)
                 ) {
                     Column(modifier = Modifier.padding(18.dp)) {
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
                                 text = punto.nombre,
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold,
-                                color = Color.White
+                                color = Color.White,
+                                modifier = Modifier.weight(1f),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
                             )
-                            IconButton(onClick = { viewModel.seleccionarPunto(null) }) {
-                                Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Color.White)
+
+                            IconButton(
+                                onClick = { viewModel.seleccionarPunto(null) }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Cerrar",
+                                    tint = Color.White
+                                )
                             }
                         }
 

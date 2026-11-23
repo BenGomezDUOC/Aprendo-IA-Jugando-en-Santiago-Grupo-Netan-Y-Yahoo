@@ -30,6 +30,8 @@ import cl.triskeledu.aprendogame.model.Capsula
 import cl.triskeledu.aprendogame.model.VideoRegistrado
 import cl.triskeledu.aprendogame.model.Rol
 import cl.triskeledu.aprendogame.security.PasswordUtils
+import cl.triskeledu.aprendogame.data.repository.RemoteBackendRepository
+import cl.triskeledu.aprendogame.data.remote.dto.RegistroBackendRequestDto
 import cl.triskeledu.aprendogame.ui.components.BarraNavegacion
 import cl.triskeledu.aprendogame.ui.screens.*
 import cl.triskeledu.aprendogame.viewmodel.ColeccionViewModel
@@ -72,6 +74,7 @@ fun AppNavigation() {
     }
 
     val scope = rememberCoroutineScope()
+    val remoteBackendRepository = remember { RemoteBackendRepository() }
 
     val sessionManager = remember(context) {
         SessionManager(context.applicationContext)
@@ -171,11 +174,6 @@ fun AppNavigation() {
 
     var tipoVideoPersonal by remember {
         mutableStateOf("registrado")
-    }
-
-    // Historial temporal del personal.
-    val videosVistosPersonal = remember {
-        mutableStateMapOf<Int, Boolean>()
     }
 
 
@@ -484,64 +482,58 @@ fun AppNavigation() {
                                     return@launch
                                 }
 
-                                val resultado =
-                                    withContext(Dispatchers.IO) {
-
-                                        val jugadorSeguro =
-                                            nuevoJugador.copy(
-
-                                                contrasena =
-                                                    PasswordUtils.crearHash(
-                                                        nuevoJugador.contrasena
-                                                    )
-                                            )
-
-                                        usuarioDao.registrarJugador(
-                                            jugadorSeguro
-                                        )
-                                    }
-
-                                if (resultado == null) {
-
-                                    Toast.makeText(
-                                        context,
-                                        "Este correo electrónico ya está registrado",
-                                        Toast.LENGTH_LONG
-                                    ).show()
-
-                                    onResultado(false)
-
-                                } else {
-
-                                    val nuevoId = resultado.toInt()
-
-                                    sessionManager.guardarUsuarioActivo(
-                                        nuevoId
+                                // Primero crea la cuenta en MySQL. Si el backend
+                                // falla, no genera una cuenta Room sin sincronizar.
+                                val registro = remoteBackendRepository.registrar(
+                                    RegistroBackendRequestDto(
+                                        nombre = nuevoJugador.nombre.trim(),
+                                        alias = nuevoJugador.alias.trim(),
+                                        correo = nuevoJugador.correo.trim().lowercase(),
+                                        contrasena = nuevoJugador.contrasena,
+                                        telefono = nuevoJugador.telefono.trim(),
+                                        direccion = nuevoJugador.direccion.trim(),
+                                        avatar = nuevoJugador.avatar,
+                                        rol = "CLIENTE"
                                     )
+                                ).getOrThrow()
 
-                                    jugadorActivoId = nuevoId
+                                // El registro no devuelve JWT: se obtiene con login.
+                                val sesion = remoteBackendRepository.login(
+                                    nuevoJugador.correo.trim().lowercase(),
+                                    nuevoJugador.contrasena
+                                ).getOrThrow()
+                                check(sesion.usuario.id == registro.id) {
+                                    "La sesión no pertenece a la cuenta registrada"
+                                }
 
-                                    Toast.makeText(
-                                        context,
-                                        "¡Bienvenido, ${nuevoJugador.nombre}!",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
+                                val nuevoId = withContext(Dispatchers.IO) {
+                                    usuarioDao.registrarJugador(
+                                        nuevoJugador.copy(
+                                            correo = nuevoJugador.correo.trim().lowercase(),
+                                            contrasena = PasswordUtils.crearHash(nuevoJugador.contrasena)
+                                        )
+                                    ).toInt()
+                                }
 
-                                    onResultado(true)
-
-                                    navController.navigate("cliente") {
-
-                                        popUpTo("inicio") {
-                                            inclusive = false
-                                        }
-                                    }
+                                sessionManager.guardarSesionBackend(
+                                    usuarioLocalId = nuevoId,
+                                    usuarioBackendId = sesion.usuario.id,
+                                    token = sesion.token,
+                                    rol = sesion.usuario.rol
+                                )
+                                jugadorActivoId = nuevoId
+                                onResultado(true)
+                                Toast.makeText(context, "¡Bienvenido, ${nuevoJugador.nombre}!", Toast.LENGTH_SHORT).show()
+                                navController.navigate("cliente") {
+                                    popUpTo("registro") { inclusive = true }
+                                    launchSingleTop = true
                                 }
 
                             } catch (e: Exception) {
 
                                 Toast.makeText(
                                     context,
-                                    "No se pudo registrar el jugador",
+                                    "Registro fallido: ${e.message ?: "verifica el backend"}",
                                     Toast.LENGTH_LONG
                                 ).show()
 
@@ -605,9 +597,25 @@ fun AppNavigation() {
                                     usuarioEncontrado != null
                                 ) {
 
-                                    sessionManager.guardarUsuarioActivo(
-                                        usuarioEncontrado.id
-                                    )
+                                    // Las cuentas predefinidas funcionan con
+                                    // credenciales locales; los demás usuarios
+                                    // deben autenticarse también en Spring Boot.
+                                        val sesion = remoteBackendRepository.login(
+                                            usuarioEncontrado.correo.trim().lowercase(),
+                                            contrasenaLimpia
+                                        ).getOrThrow()
+
+                                        check(sesion.usuario.rol == usuarioEncontrado.rol.name) {
+                                            "El rol del backend no coincide con el usuario local"
+                                        }
+
+                                        sessionManager.guardarSesionBackend(
+                                            usuarioLocalId = usuarioEncontrado.id,
+                                            usuarioBackendId = sesion.usuario.id,
+                                            token = sesion.token,
+                                            rol = sesion.usuario.rol
+                                        )
+
 
                                     jugadorActivoId =
                                         usuarioEncontrado.id
@@ -629,6 +637,9 @@ fun AppNavigation() {
                                         }
 
                                     navController.navigate(destino) {
+                                        popUpTo("seleccion_jugador") {
+                                            inclusive = true
+                                        }
                                         launchSingleTop = true
                                     }
 
@@ -647,7 +658,7 @@ fun AppNavigation() {
 
                                 Toast.makeText(
                                     context,
-                                    "No se pudo iniciar sesión",
+                                    "Inicio de sesión fallido: ${e.message ?: "verifica el backend"}",
                                     Toast.LENGTH_LONG
                                 ).show()
                             }
@@ -681,7 +692,10 @@ fun AppNavigation() {
                         }
                     }
 
-                } else {
+                } else if (
+                    usuarioActual?.id == jugadorActivoId &&
+                    usuarioActual?.rol == Rol.CLIENTE
+                ) {
 
                     DashboardScreen(
 
@@ -1553,7 +1567,10 @@ fun AppNavigation() {
                         }
                     }
 
-                } else {
+                } else if (
+                    usuarioActual?.id == jugadorActivoId &&
+                    usuarioActual?.rol == Rol.CLIENTE
+                ) {
 
                     ColeccionScreen(
 
@@ -2189,3 +2206,4 @@ fun AppNavigation() {
 
     } // Fin del Scaffold.
 }
+

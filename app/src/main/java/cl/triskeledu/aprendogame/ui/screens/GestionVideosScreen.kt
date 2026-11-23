@@ -1,4 +1,5 @@
 
+
 package cl.triskeledu.aprendogame.ui.screens
 
 import android.net.Uri
@@ -43,6 +44,14 @@ import androidx.compose.ui.layout.ContentScale
 import android.graphics.BitmapFactory
 
 import androidx.compose.material.icons.filled.Image
+
+import cl.triskeledu.aprendogame.data.local.SessionManager
+import cl.triskeledu.aprendogame.data.remote.RetrofitClient
+import cl.triskeledu.aprendogame.data.remote.dto.VideoRegistradoBackendDto
+import okhttp3.MultipartBody
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.asRequestBody
+
 
 private val azulGestion = Color(0xFF243F78)
 private val fondoGestion = Color(0xFFF5F7FC)
@@ -289,6 +298,65 @@ fun GestionVideosScreen(
         }
 
 
+    suspend fun subirArchivoBackend(
+        uri: Uri,
+        authorization: String,
+        esVideo: Boolean
+    ): String = withContext(Dispatchers.IO) {
+
+        val extension = if (esVideo) "mp4" else "jpg"
+        val tipo = if (esVideo) "video/mp4" else "image/jpeg"
+
+        val temporal = File(
+            context.cacheDir,
+            "subida_${UUID.randomUUID()}.$extension"
+        )
+
+        try {
+            context.contentResolver.openInputStream(uri)?.use { entrada ->
+                temporal.outputStream().use { salida ->
+                    entrada.copyTo(salida)
+                }
+            } ?: error("No se pudo abrir el archivo.")
+
+            if (temporal.length() == 0L) {
+                error("El archivo está vacío.")
+            }
+
+            val cuerpo = temporal.asRequestBody(tipo.toMediaType())
+
+            val archivo = MultipartBody.Part.createFormData(
+                "archivo",
+                temporal.name,
+                cuerpo
+            )
+
+            val respuesta = if (esVideo) {
+                RetrofitClient.localizacionesApi.subirVideo(
+                    authorization,
+                    archivo
+                )
+            } else {
+                RetrofitClient.localizacionesApi.subirMiniatura(
+                    authorization,
+                    archivo
+                )
+            }
+
+            if (!respuesta.isSuccessful) {
+                error("Error al subir archivo: HTTP ${respuesta.code()}")
+            }
+
+            respuesta.body()?.get("url")
+                ?: error("El servidor no devolvió la URL.")
+
+        } finally {
+            temporal.delete()
+        }
+    }
+
+
+
     // Abre el formulario para crear o editar.
 
     fun abrirFormulario(
@@ -333,6 +401,134 @@ fun GestionVideosScreen(
         duracionTexto = ""
     }
 
+
+    // Migra el video antiguo de «mar» desde Room a MySQL, solo si falta allí.
+    // No altera otros videos ni vuelve a subir uno que ya exista en el backend.
+    var migracionMarIntentada by remember { mutableStateOf(false) }
+
+    LaunchedEffect(contenidos, videos) {
+        if (migracionMarIntentada) return@LaunchedEffect
+
+        val contenidosMar = contenidos.filter {
+            it.titulo.trim().equals("mar", ignoreCase = true)
+        }
+        if (contenidosMar.isEmpty()) return@LaunchedEffect
+        if (contenidosMar.size != 1) {
+            migracionMarIntentada = true
+            mensaje = "No se migró el video de mar: hay varios contenidos locales con ese título."
+            return@LaunchedEffect
+        }
+
+        val contenidoMar = contenidosMar.single()
+        val videosMar = videos.filter { it.contenidoId == contenidoMar.id }
+        // La colección de Room puede estar cargando al abrir la pantalla.
+        if (videosMar.isEmpty()) return@LaunchedEffect
+
+        migracionMarIntentada = true
+        if (videosMar.size != 1) {
+            mensaje = "No se migró el video de mar: hay varios videos locales asociados."
+            return@LaunchedEffect
+        }
+
+        if (guardando) return@LaunchedEffect
+        guardando = true
+        try {
+            withContext(Dispatchers.IO) {
+                val videoLocal = videosMar.single()
+                val authorization = SessionManager(context.applicationContext)
+                    .obtenerAuthorizationHeader()
+                    ?: error("Inicia sesión como administrador para migrar el video de mar.")
+
+                val respuestaContenidos = RetrofitClient.localizacionesApi
+                    .obtenerContenidos(authorization)
+                if (!respuestaContenidos.isSuccessful) {
+                    error("Error al consultar contenidos: HTTP ${respuestaContenidos.code()}")
+                }
+
+                val contenidosRemotos = respuestaContenidos.body().orEmpty().filter {
+                    it.titulo == contenidoMar.titulo &&
+                            it.descripcion == contenidoMar.descripcion &&
+                            it.categoria == contenidoMar.categoria
+                }
+                if (contenidosRemotos.size != 1) {
+                    error("No se identificó un único contenido mar en MySQL.")
+                }
+                val contenidoRemotoId = contenidosRemotos.single().id
+                    ?: error("El contenido mar no tiene ID en MySQL.")
+
+                val respuestaVideos = RetrofitClient.localizacionesApi
+                    .obtenerVideos(authorization)
+                if (!respuestaVideos.isSuccessful) {
+                    error("Error al consultar videos: HTTP ${respuestaVideos.code()}")
+                }
+                val videosRemotos = respuestaVideos.body().orEmpty().filter {
+                    it.contenidoId == contenidoRemotoId
+                }
+                if (videosRemotos.size > 1) {
+                    error("Hay varios videos remotos asociados a mar. No se modificó nada.")
+                }
+                if (videosRemotos.isNotEmpty()) {
+                    // Ya está registrado; no generar duplicados ni subir otro MP4.
+                    return@withContext "El video de mar ya estaba registrado en MySQL."
+                }
+
+                // Comprobar los metadatos antes de subir archivos o crear registros.
+                if (videoLocal.titulo.isBlank() || videoLocal.autor.isBlank() ||
+                    videoLocal.duracion <= 0L
+                ) {
+                    error("El video de mar necesita título, autor y duración. Complétalos en Editar video y guarda.")
+                }
+
+                val uriVideo = Uri.parse(videoLocal.urlVideo)
+                if (uriVideo.scheme != "file" && uriVideo.scheme != "content") {
+                    error("El MP4 de mar no es un archivo local accesible. Selecciónalo en Editar video y guarda.")
+                }
+                if (uriVideo.scheme == "file" &&
+                    (uriVideo.path == null || !File(uriVideo.path!!).isFile)
+                ) {
+                    error("El archivo MP4 de mar ya no existe en el dispositivo. Selecciónalo nuevamente.")
+                }
+
+                val urlVideoRemota = subirArchivoBackend(
+                    uriVideo, authorization, esVideo = true
+                )
+                val urlMiniaturaRemota = if (videoLocal.urlMiniatura.isNotBlank()) {
+                    val uriMiniatura = Uri.parse(videoLocal.urlMiniatura)
+                    if (uriMiniatura.scheme == "file" &&
+                        uriMiniatura.path != null && File(uriMiniatura.path!!).isFile
+                    ) {
+                        subirArchivoBackend(uriMiniatura, authorization, esVideo = false)
+                    } else if (uriMiniatura.scheme == "content") {
+                        subirArchivoBackend(uriMiniatura, authorization, esVideo = false)
+                    } else {
+                        "" // La miniatura es opcional; no bloquear el MP4.
+                    }
+                } else {
+                    ""
+                }
+
+                val solicitud = VideoRegistradoBackendDto(
+                    titulo = videoLocal.titulo,
+                    descripcion = videoLocal.descripcion,
+                    urlVideo = urlVideoRemota,
+                    contenidoId = contenidoRemotoId,
+                    autor = videoLocal.autor,
+                    duracion = videoLocal.duracion,
+                    urlMiniatura = urlMiniaturaRemota
+                )
+                val respuestaCreacion = RetrofitClient.localizacionesApi
+                    .crearVideo(authorization, solicitud)
+                if (!respuestaCreacion.isSuccessful) {
+                    error("No se registró el video de mar: HTTP ${respuestaCreacion.code()}")
+                }
+                "El video de mar se registró correctamente en MySQL."
+            }
+        } catch (e: Exception) {
+            mensaje = "No se pudo migrar el video de mar: ${e.message ?: "Error desconocido"}"
+        } finally {
+            guardando = false
+        }
+    }
 
     BackHandler(
         enabled = contenidoSeleccionado != null && !guardando
@@ -902,7 +1098,7 @@ fun GestionVideosScreen(
                     }
 
 
-                    }
+                }
 
                 if (mensaje.isNotBlank()) {
                     Text(
@@ -911,134 +1107,256 @@ fun GestionVideosScreen(
                     )
                 }
                 // GUARDAR VIDEO
-                        Button(
-                            enabled = !guardando &&
-                                    titulo.isNotBlank() &&
-                                    autor.isNotBlank() &&
-                                    convertirDuracion(duracionTexto) != null &&
-                                    (archivoSeleccionado != null || videoActual != null),
+                Button(
+                    enabled = !guardando &&
+                            titulo.isNotBlank() &&
+                            autor.isNotBlank() &&
+                            convertirDuracion(duracionTexto) != null &&
+                            (archivoSeleccionado != null || videoActual != null),
 
-                            onClick = {
-                                val uri = archivoSeleccionado
-                                val uriMiniatura = miniaturaSeleccionada
-                                val tituloGuardar = titulo.trim()
-                                val descripcionGuardar = descripcion.trim()
-                                val autorGuardar = autor.trim()
-                                val duracionGuardar = convertirDuracion(duracionTexto)
+                    onClick = {
+                        val uri = archivoSeleccionado
+                        val uriMiniatura = miniaturaSeleccionada
+                        val tituloGuardar = titulo.trim()
+                        val descripcionGuardar = descripcion.trim()
+                        val autorGuardar = autor.trim()
+                        val duracionGuardar = convertirDuracion(duracionTexto)
 
-                                if (duracionGuardar != null) {
-                                    guardando = true
-                                    mensaje = ""
+                        if (duracionGuardar != null) {
+                            guardando = true
+                            mensaje = ""
 
-                                    scope.launch {
-                                        var nuevaRuta: String? = null
-                                        var nuevaRutaMiniatura: String? = null
+                            scope.launch {
+                                var nuevaRuta: String? = null
+                                var nuevaRutaMiniatura: String? = null
 
-                                        try {
-                                            // Copia un MP4 nuevo o conserva el anterior.
-                                            val rutaGuardar =
-                                                if (uri != null) {
-                                                    copiarVideo(uri).also {
-                                                        nuevaRuta = it
-                                                    }
-                                                } else {
-                                                    videoActual?.urlVideo
-                                                        ?: error("Selecciona un MP4.")
-                                                }
+                                try {
+                                    // Copia un MP4 nuevo o conserva el anterior.
+                                    val rutaGuardar =
+                                        if (uri != null) {
+                                            copiarVideo(uri).also {
+                                                nuevaRuta = it
+                                            }
+                                        } else {
+                                            videoActual?.urlVideo
+                                                ?: error("Selecciona un MP4.")
+                                        }
 
-                                            // Copia una miniatura nueva o conserva la anterior.
-                                            val rutaMiniaturaGuardar =
-                                                if (uriMiniatura != null) {
-                                                    copiarMiniatura(uriMiniatura).also {
-                                                        nuevaRutaMiniatura = it
-                                                    }
-                                                } else {
-                                                    videoActual?.urlMiniatura.orEmpty()
-                                                }
+                                    // Copia una miniatura nueva o conserva la anterior.
+                                    val rutaMiniaturaGuardar =
+                                        if (uriMiniatura != null) {
+                                            copiarMiniatura(uriMiniatura).also {
+                                                nuevaRutaMiniatura = it
+                                            }
+                                        } else {
+                                            videoActual?.urlMiniatura.orEmpty()
+                                        }
 
-                                            withContext(Dispatchers.IO) {
-                                                if (videoActual == null) {
 
-                                                    // REGISTRAR NUEVO VIDEO
-                                                    videoDao.registrar(
-                                                        VideoRegistrado(
-                                                            titulo = tituloGuardar,
-                                                            descripcion = descripcionGuardar,
-                                                            urlVideo = rutaGuardar,
-                                                            contenidoId = contenido.id,
-                                                            autor = autorGuardar,
-                                                            duracion = duracionGuardar,
-                                                            urlMiniatura = rutaMiniaturaGuardar
-                                                        )
-                                                    )
+                                    withContext(Dispatchers.IO) {
 
-                                                } else {
+                                        val sesion = SessionManager(context.applicationContext)
 
-                                                    // ACTUALIZAR VIDEO EXISTENTE
-                                                    videoDao.actualizar(
-                                                        id = videoActual.id,
-                                                        titulo = tituloGuardar,
-                                                        descripcion = descripcionGuardar,
-                                                        urlVideo = rutaGuardar,
-                                                        contenidoId = contenido.id,
-                                                        autor = autorGuardar,
-                                                        duracion = duracionGuardar,
-                                                        urlMiniatura = rutaMiniaturaGuardar
-                                                    )
-                                                }
+                                        val authorization = sesion.obtenerAuthorizationHeader()
+                                            ?: error("Inicia sesión con el administrador del backend.")
+
+                                        // 1. Buscar la cápsula correspondiente en MySQL.
+                                        val respuestaContenidos =
+                                            RetrofitClient.localizacionesApi
+                                                .obtenerContenidos(authorization)
+
+                                        if (!respuestaContenidos.isSuccessful) {
+                                            error("Error al consultar contenidos: HTTP ${respuestaContenidos.code()}")
+                                        }
+
+                                        val coincidenciasContenido =
+                                            respuestaContenidos.body().orEmpty().filter {
+                                                it.titulo == contenido.titulo &&
+                                                        it.descripcion == contenido.descripcion &&
+                                                        it.categoria == contenido.categoria
                                             }
 
-                                            cerrarFormulario()
-                                            mensaje = "Video guardado correctamente."
+                                        if (coincidenciasContenido.size != 1) {
+                                            error(
+                                                "No se encontró una única cápsula en MySQL. " +
+                                                        "Coincidencias: ${coincidenciasContenido.size}"
+                                            )
+                                        }
 
-                                        } catch (e: Exception) {
+                                        val contenidoBackendId =
+                                            coincidenciasContenido.single().id
+                                                ?: error("La cápsula no tiene ID en MySQL.")
 
-                                            // Elimina solamente los archivos nuevos
-                                            // si ocurre un error al guardar.
-                                            withContext(Dispatchers.IO) {
-                                                nuevaRuta?.let { ruta ->
-                                                    Uri.parse(ruta).path?.let { path ->
-                                                        File(path).delete()
-                                                    }
-                                                }
+                                        // 2. Comprobar si ya existe un video para esa cápsula.
+                                        val respuestaVideos =
+                                            RetrofitClient.localizacionesApi
+                                                .obtenerVideos(authorization)
 
-                                                nuevaRutaMiniatura?.let { ruta ->
-                                                    Uri.parse(ruta).path?.let { path ->
-                                                        File(path).delete()
-                                                    }
-                                                }
+                                        if (!respuestaVideos.isSuccessful) {
+                                            error("Error al consultar videos: HTTP ${respuestaVideos.code()}")
+                                        }
+
+                                        val videosRemotos = respuestaVideos.body().orEmpty()
+                                            .filter { it.contenidoId == contenidoBackendId }
+
+                                        if (videosRemotos.size > 1) {
+                                            error("Existen varios videos para esta cápsula en MySQL.")
+                                        }
+
+                                        val videoRemoto = videosRemotos.singleOrNull()
+
+                                        // 3. Subir el MP4 o conservar la URL remota existente.
+                                        val urlVideoBackend =
+                                            if (uri != null) {
+                                                subirArchivoBackend(
+                                                    uri,
+                                                    authorization,
+                                                    esVideo = true
+                                                )
+                                            } else if (
+                                                videoRemoto != null &&
+                                                videoActual?.urlVideo == rutaGuardar
+                                            ) {
+                                                videoRemoto.urlVideo
+                                            } else {
+                                                subirArchivoBackend(
+                                                    Uri.parse(rutaGuardar),
+                                                    authorization,
+                                                    esVideo = true
+                                                )
                                             }
 
-                                            mensaje = "Error al guardar: ${e.message}"
+                                        // 4. Subir la miniatura o conservar la existente.
+                                        val urlMiniaturaBackend =
+                                            if (uriMiniatura != null) {
+                                                subirArchivoBackend(
+                                                    uriMiniatura,
+                                                    authorization,
+                                                    esVideo = false
+                                                )
+                                            } else if (videoRemoto != null) {
+                                                videoRemoto.urlMiniatura
+                                            } else if (rutaMiniaturaGuardar.isNotBlank()) {
+                                                subirArchivoBackend(
+                                                    Uri.parse(rutaMiniaturaGuardar),
+                                                    authorization,
+                                                    esVideo = false
+                                                )
+                                            } else {
+                                                ""
+                                            }
 
-                                        } finally {
-                                            guardando = false
+                                        // 5. Preparar el registro del video en MySQL.
+                                        val solicitud = VideoRegistradoBackendDto(
+                                            titulo = tituloGuardar,
+                                            descripcion = descripcionGuardar,
+                                            urlVideo = urlVideoBackend,
+                                            contenidoId = contenidoBackendId,
+                                            autor = autorGuardar,
+                                            duracion = duracionGuardar,
+                                            urlMiniatura = urlMiniaturaBackend
+                                        )
+
+                                        // 6. Crear o actualizar el video remoto.
+                                        val respuesta = if (videoRemoto == null) {
+                                            RetrofitClient.localizacionesApi.crearVideo(
+                                                authorization,
+                                                solicitud
+                                            )
+                                        } else {
+                                            val idRemoto = videoRemoto.id
+                                                ?: error("El video remoto no tiene ID.")
+
+                                            RetrofitClient.localizacionesApi.actualizarVideo(
+                                                authorization,
+                                                idRemoto,
+                                                solicitud
+                                            )
+                                        }
+
+                                        if (!respuesta.isSuccessful) {
+                                            error("No se guardó el video en MySQL: HTTP ${respuesta.code()}")
+                                        }
+
+                                        // 7. Sincronizar Room después de guardar en MySQL.
+                                        if (videoActual == null) {
+                                            videoDao.registrar(
+                                                VideoRegistrado(
+                                                    titulo = tituloGuardar,
+                                                    descripcion = descripcionGuardar,
+                                                    urlVideo = rutaGuardar,
+                                                    contenidoId = contenido.id,
+                                                    autor = autorGuardar,
+                                                    duracion = duracionGuardar,
+                                                    urlMiniatura = rutaMiniaturaGuardar
+                                                )
+                                            )
+                                        } else {
+                                            videoDao.actualizar(
+                                                id = videoActual.id,
+                                                titulo = tituloGuardar,
+                                                descripcion = descripcionGuardar,
+                                                urlVideo = rutaGuardar,
+                                                contenidoId = contenido.id,
+                                                autor = autorGuardar,
+                                                duracion = duracionGuardar,
+                                                urlMiniatura = rutaMiniaturaGuardar
+                                            )
                                         }
                                     }
+
+
+                                    cerrarFormulario()
+                                    mensaje = "Video guardado correctamente."
+
+                                } catch (e: Exception) {
+
+                                    // Elimina solamente los archivos nuevos
+                                    // si ocurre un error al guardar.
+                                    withContext(Dispatchers.IO) {
+                                        nuevaRuta?.let { ruta ->
+                                            Uri.parse(ruta).path?.let { path ->
+                                                File(path).delete()
+                                            }
+                                        }
+
+                                        nuevaRutaMiniatura?.let { ruta ->
+                                            Uri.parse(ruta).path?.let { path ->
+                                                File(path).delete()
+                                            }
+                                        }
+                                    }
+
+                                    mensaje = "Error al guardar: ${e.message}"
+
+                                } finally {
+                                    guardando = false
                                 }
-                            },
-
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(52.dp),
-
-                            shape = RoundedCornerShape(12.dp),
-
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = azulGestion
-                            )
-                        ) {
-                            Text(
-                                if (guardando) {
-                                    "Guardando video..."
-                                } else {
-                                    "Guardar video"
-                                }
-                            )
+                            }
                         }
+                    },
+
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
+
+                    shape = RoundedCornerShape(12.dp),
+
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = azulGestion
+                    )
+                ) {
+                    Text(
+                        if (guardando) {
+                            "Guardando video..."
+                        } else {
+                            "Guardar video"
+                        }
+                    )
+                }
 
 
-                        OutlinedButton(
+                OutlinedButton(
                     onClick = { cerrarFormulario() },
                     enabled = !guardando,
                     modifier = Modifier.fillMaxWidth(),

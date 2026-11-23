@@ -75,5 +75,20 @@ interface CapsulaDao {
         urlVideo: String,
         puntos: Int
     )
+
+
+    // Actualiza el QR y su estado sin cambiar el ID local.
+    @Query("""
+        UPDATE capsulas
+        SET codigoQr = :codigoQr,
+            estado = :estado
+        WHERE id = :id
+    """)
+    suspend fun actualizarQrBackend(
+        id: Int,
+        codigoQr: String,
+        estado: String
+    ): Int
+
 }
 

@@ -1,4 +1,4 @@
-﻿
+
 package cl.triskeledu.aprendogame.ui.screens
 
 import android.Manifest
@@ -47,6 +47,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 
+import androidx.room.withTransaction
+import cl.triskeledu.aprendogame.data.local.SessionManager
+import cl.triskeledu.aprendogame.data.repository.RemoteBackendRepository
 import cl.triskeledu.aprendogame.data.local.AppDatabase
 import cl.triskeledu.aprendogame.data.repository.GameRepositoryImpl
 import cl.triskeledu.aprendogame.model.Capsula
@@ -99,6 +102,11 @@ fun EscanerQRScreen(
             AppDatabase.getInstance(context.applicationContext)
         )
     }
+
+    // Para usuarios autenticados en MySQL, Spring Boot valida y acredita el QR.
+    val sessionManager = remember(context) { SessionManager(context.applicationContext) }
+    val remoteRepository = remember { RemoteBackendRepository() }
+    val database = remember(context) { AppDatabase.getInstance(context.applicationContext) }
 
     // Avisos generales del escáner.
     val snackbarHostState = remember { SnackbarHostState() }
@@ -371,21 +379,48 @@ fun EscanerQRScreen(
                             // VALIDACIÓN CORRECTA.
                             else -> {
 
-                                // Registra el descubrimiento.
-                                val resultado =
-                                    repository.registrarDescubrimientoQr(
+                                val token = sessionManager.obtenerTokenBackend()
+                                val backendId = sessionManager.obtenerUsuarioBackendId()
+
+                                val puntosGanados: Int
+                                if (token != null && backendId != null) {
+                                    // Primero acredita en MySQL; no envía el ID de Room
+                                    // como puntoId, pues son bases independientes.
+                                    val respuesta = remoteRepository.escanearQr(
+                                        token = token,
+                                        usuarioIdBackend = backendId,
+                                        codigoQr = codigoQr,
+                                        puntoIdBackend = null
+                                    ).getOrThrow()
+
+                                    // La respuesta de Spring Boot es la fuente de verdad.
+                                    puntosGanados = respuesta.puntosGanados ?: 0
+                                    database.withTransaction {
+                                        database.descubrimientoQrDao().registrarDescubrimiento(
+                                            DescubrimientoQr(
+                                                usuarioId = usuarioId,
+                                                capsulaId = capsula.id,
+                                                fechaTimestamp = System.currentTimeMillis()
+                                            )
+                                        )
+                                        // Reflejar saldo remoto, sin sumar dos veces.
+                                        respuesta.totalPuntosUsuario?.let { total ->
+                                            database.usuarioDao().establecerPuntos(
+                                                usuarioId, total.coerceAtLeast(0)
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    // Cuentas predefinidas: modo local existente.
+                                    val resultado = repository.registrarDescubrimientoQr(
                                         DescubrimientoQr(
                                             usuarioId = usuarioId,
                                             capsulaId = capsula.id,
-                                            fechaTimestamp =
-                                                System.currentTimeMillis()
+                                            fechaTimestamp = System.currentTimeMillis()
                                         )
                                     )
-
-                                // 10 puntos solamente si el QR
-                                // se descubre por primera vez.
-                                val puntosGanados =
-                                    if (resultado == -1L) 0 else 10
+                                    puntosGanados = if (resultado == -1L) 0 else 10
+                                }
 
                                 resultadoEncontrado.set(true)
 

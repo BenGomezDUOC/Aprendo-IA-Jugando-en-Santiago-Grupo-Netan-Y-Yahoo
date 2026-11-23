@@ -1,3 +1,4 @@
+
 package cl.triskeledu.aprendogame.ui.screens
 
 import androidx.compose.foundation.background
@@ -20,6 +21,11 @@ import cl.triskeledu.aprendogame.model.ContenidoEducativo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+import cl.triskeledu.aprendogame.data.local.SessionManager
+import cl.triskeledu.aprendogame.data.remote.RetrofitClient
+import cl.triskeledu.aprendogame.data.remote.dto.ContenidoEducativoBackendDto
+import cl.triskeledu.aprendogame.data.remote.dto.PuntoInteresBackendDto
 
 private val azulContenido = Color(0xFF2455A4)
 private val fondoContenido = Color(0xFFF4F7FC)
@@ -53,6 +59,7 @@ fun ContenidoScreen(onTodosVideosClick: () -> Unit = {}
 
     val scope = rememberCoroutineScope()
 
+
     val contenidos by remember(dao) {
         dao.obtenerTodos()
     }.collectAsState(initial = emptyList())
@@ -63,6 +70,30 @@ fun ContenidoScreen(onTodosVideosClick: () -> Unit = {}
     val puntos by remember(puntoDao) {
         puntoDao.getPuntos()
     }.collectAsState(initial = emptyList())
+
+    // Opciones del formulario: exclusivamente los puntos existentes en MySQL.
+    var puntosBackend by remember { mutableStateOf<List<PuntoInteresBackendDto>>(emptyList()) }
+    var errorPuntos by remember { mutableStateOf("") }
+    var cargandoPuntos by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        cargandoPuntos = true
+        try {
+            val authorization = SessionManager(context.applicationContext)
+                .obtenerAuthorizationHeader()
+                ?: error("Inicia sesión en el backend para consultar los puntos.")
+            val respuesta = withContext(Dispatchers.IO) {
+                RetrofitClient.localizacionesApi.obtenerPuntos(authorization)
+            }
+            if (!respuesta.isSuccessful) error("HTTP ${respuesta.code()} al obtener puntos.")
+            puntosBackend = respuesta.body().orEmpty()
+            errorPuntos = ""
+        } catch (e: Exception) {
+            puntosBackend = emptyList()
+            errorPuntos = e.message ?: "No se pudieron cargar los puntos de MySQL."
+        } finally {
+            cargandoPuntos = false
+        }
+    }
 
     var mostrarFormulario by remember { mutableStateOf(false) }
     var editando by remember {
@@ -76,7 +107,7 @@ fun ContenidoScreen(onTodosVideosClick: () -> Unit = {}
         mutableStateOf(categoriasContenido.first())
     }
     var otraCategoria by remember { mutableStateOf("") }
-    var puntoId by remember { mutableStateOf<Int?>(null) }
+    var puntoId by remember { mutableStateOf<Long?>(null) }
 
     var menuCategoria by remember { mutableStateOf(false) }
     var menuPunto by remember { mutableStateOf(false) }
@@ -114,7 +145,16 @@ fun ContenidoScreen(onTodosVideosClick: () -> Unit = {}
             categoriaGuardada
         }
 
-        puntoId = contenido?.puntoId
+        // El contenido en Room usa ID local; convertirlo al ID verdadero del backend.
+        val puntoLocalEdicion = puntos.firstOrNull { it.id == contenido?.puntoId }
+        puntoId = puntoLocalEdicion?.let { local ->
+            puntosBackend.firstOrNull { remoto ->
+                remoto.nombre.trim().equals(local.nombre.trim(), ignoreCase = true) &&
+                        remoto.latitud != null && remoto.longitud != null &&
+                        kotlin.math.abs(remoto.latitud - local.latitud) < 0.0001 &&
+                        kotlin.math.abs(remoto.longitud - local.longitud) < 0.0001
+            }?.id
+        }
         mensaje = ""
         mostrarFormulario = true
     }
@@ -442,7 +482,7 @@ fun ContenidoScreen(onTodosVideosClick: () -> Unit = {}
                         ) {
 
                             OutlinedTextField(
-                                value = puntos.firstOrNull {
+                                value = puntosBackend.firstOrNull {
                                     it.id == puntoId
                                 }?.nombre ?: "Seleccionar punto turístico",
                                 onValueChange = {},
@@ -467,7 +507,7 @@ fun ContenidoScreen(onTodosVideosClick: () -> Unit = {}
                                 }
                             ) {
 
-                                puntos.forEach { punto ->
+                                puntosBackend.forEach { punto ->
 
                                     DropdownMenuItem(
                                         text = {
@@ -482,9 +522,13 @@ fun ContenidoScreen(onTodosVideosClick: () -> Unit = {}
                             }
                         }
 
-                        if (puntos.isEmpty()) {
+                        if (cargandoPuntos || errorPuntos.isNotBlank() || puntosBackend.isEmpty()) {
                             Text(
-                                text = "No se encontraron puntos turísticos.",
+                                text = when {
+                                    cargandoPuntos -> "Consultando puntos turísticos en MySQL..."
+                                    errorPuntos.isNotBlank() -> errorPuntos
+                                    else -> "No hay puntos turísticos en MySQL."
+                                },
                                 color = MaterialTheme.colorScheme.error
                             )
                         }
@@ -530,17 +574,138 @@ fun ContenidoScreen(onTodosVideosClick: () -> Unit = {}
 
                             try {
 
+
                                 withContext(Dispatchers.IO) {
 
+                                    val sesion = SessionManager(context.applicationContext)
+
+                                    val authorization = sesion.obtenerAuthorizationHeader()
+                                        ?: error("Inicia sesión con el Generador del backend.")
+
+                                    // El desplegable usa IDs reales de MySQL.
+                                    val puntoBackendId: Long? = puntoSeleccionado
+                                    if (puntoBackendId != null && puntosBackend.none { it.id == puntoBackendId }) {
+                                        error("El punto turístico seleccionado ya no está disponible en MySQL.")
+                                    }
+
+                                    val solicitud = ContenidoEducativoBackendDto(
+                                        titulo = tituloGuardar,
+                                        descripcion = descripcionGuardar,
+                                        categoria = categoriaFinal,
+                                        estado = "BORRADOR",
+                                        puntoId = puntoBackendId
+                                    )
+
+                                    // Consultar contenidos para identificar una edición.
+                                    val respuestaContenidos =
+                                        RetrofitClient.localizacionesApi
+                                            .obtenerContenidos(authorization)
+
+                                    if (!respuestaContenidos.isSuccessful) {
+                                        error(
+                                            "Error al consultar contenidos: HTTP ${respuestaContenidos.code()}"
+                                        )
+                                    }
+
+                                    val coincidenciasContenido =
+                                        if (contenidoActual == null) {
+                                            emptyList()
+                                        } else {
+                                            respuestaContenidos.body().orEmpty().filter {
+                                                it.titulo == contenidoActual.titulo &&
+                                                        it.descripcion == contenidoActual.descripcion &&
+                                                        it.categoria == contenidoActual.categoria
+                                            }
+                                        }
+
+                                    if (coincidenciasContenido.size > 1) {
+                                        error("Hay contenidos duplicados en MySQL. No se modificó nada.")
+                                    }
+
+                                    val contenidoRemoto = coincidenciasContenido.singleOrNull()
+
+                                    if (contenidoActual != null && contenidoRemoto == null) {
+
+                                        val existeSimilar = respuestaContenidos.body().orEmpty().any {
+                                            it.titulo.equals(
+                                                contenidoActual.titulo,
+                                                ignoreCase = true
+                                            )
+                                        }
+
+                                        if (existeSimilar) {
+                                            error(
+                                                "Existe una cápsula con ese título en MySQL. " +
+                                                        "No se creará otra para evitar duplicados."
+                                            )
+                                        }
+                                    }
+
+
+                                    val respuesta =
+                                        if (contenidoRemoto != null) {
+                                            val idRemoto = contenidoRemoto.id
+                                                ?: error("El contenido remoto no tiene ID.")
+
+                                            RetrofitClient.localizacionesApi.actualizarContenido(
+                                                authorization,
+                                                idRemoto,
+                                                solicitud
+                                            )
+                                        } else {
+                                            // También permite sincronizar cápsulas antiguas
+                                            // que anteriormente existían solo en Room.
+                                            RetrofitClient.localizacionesApi.crearContenido(
+                                                authorization,
+                                                solicitud
+                                            )
+                                        }
+
+                                    if (!respuesta.isSuccessful) {
+                                        error(
+                                            "No se guardó en MySQL: HTTP ${respuesta.code()}"
+                                        )
+                                    }
+
+                                    val guardado = respuesta.body()
+                                        ?: error("MySQL respondió sin datos del contenido.")
+
+                                    // Relación de caché: buscar ID local por identidad, nunca por ID remoto.
+                                    val puntoLocalId: Int? = puntoBackendId?.let { idRemoto ->
+                                        val remoto = puntosBackend.first { it.id == idRemoto }
+                                        val local = puntos.firstOrNull { candidato ->
+                                            candidato.nombre.trim().equals(remoto.nombre.trim(), ignoreCase = true) &&
+                                                    remoto.latitud != null && remoto.longitud != null &&
+                                                    kotlin.math.abs(candidato.latitud - remoto.latitud) < 0.0001 &&
+                                                    kotlin.math.abs(candidato.longitud - remoto.longitud) < 0.0001
+                                        }
+                                        if (local != null) local.id else {
+                                            // El punto ya existe en MySQL; agregar solo caché local sin suponer IDs iguales.
+                                            puntoDao.crearPunto(
+                                                cl.triskeledu.aprendogame.model.PuntoInteres(
+                                                    nombre = remoto.nombre,
+                                                    descripcion = remoto.descripcion ?: "",
+                                                    direccion = remoto.direccion ?: "",
+                                                    latitud = remoto.latitud ?: error("Punto remoto sin latitud."),
+                                                    longitud = remoto.longitud ?: error("Punto remoto sin longitud."),
+                                                    altitud = remoto.altitud ?: 0.0,
+                                                    radioToleranciaMetros = remoto.radioToleranciaMetros ?: 50.0,
+                                                    imagenUri = remoto.imagenUri
+                                                )
+                                            ).toInt()
+                                        }
+                                    }
+
+                                    // Solo sincronizar Room después del éxito remoto.
                                     if (contenidoActual == null) {
 
                                         dao.crear(
                                             ContenidoEducativo(
-                                                titulo = tituloGuardar,
-                                                descripcion = descripcionGuardar,
-                                                categoria = categoriaFinal,
-                                                estado = "PUBLICADA",
-                                                puntoId = puntoSeleccionado
+                                                titulo = guardado.titulo,
+                                                descripcion = guardado.descripcion,
+                                                categoria = guardado.categoria,
+                                                estado = guardado.estado,
+                                                puntoId = puntoLocalId
                                             )
                                         )
 
@@ -548,18 +713,16 @@ fun ContenidoScreen(onTodosVideosClick: () -> Unit = {}
 
                                         dao.actualizar(
                                             id = contenidoActual.id,
-                                            titulo = tituloGuardar,
-                                            descripcion = descripcionGuardar,
-                                            categoria = categoriaFinal,
-                                            puntoId = puntoSeleccionado
+                                            titulo = guardado.titulo,
+                                            descripcion = guardado.descripcion,
+                                            categoria = guardado.categoria,
+                                            puntoId = puntoLocalId
                                         )
 
-                                        if (
-                                            contenidoActual.estado != "PUBLICADA"
-                                        ) {
+                                        if (contenidoActual.estado != guardado.estado) {
                                             dao.cambiarEstado(
                                                 contenidoActual.id,
-                                                "PUBLICADA"
+                                                guardado.estado
                                             )
                                         }
                                     }
@@ -602,3 +765,4 @@ fun ContenidoScreen(onTodosVideosClick: () -> Unit = {}
         )
     }
 }
+

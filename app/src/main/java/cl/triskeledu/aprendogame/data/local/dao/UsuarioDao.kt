@@ -31,6 +31,11 @@ interface UsuarioDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertarOActualizar(usuario: Usuario)
 
+    // Copia al usuario local el saldo oficial calculado en MySQL.
+    // Solo usar para cuentas autenticadas con backend.
+    @Query("UPDATE usuarios SET puntosAcumulados = :total WHERE id = :id")
+    suspend fun establecerPuntos(id: Int, total: Int)
+
     // Obtiene todos los jugadores con rol CLIENTE.
     @Query("""
         SELECT * FROM usuarios

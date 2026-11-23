@@ -1,3 +1,4 @@
+
 package cl.triskeledu.aprendogame.ui.screens
 
 import android.graphics.Bitmap
@@ -29,7 +30,11 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
-import java.util.UUID
+import cl.triskeledu.aprendogame.data.local.SessionManager
+import cl.triskeledu.aprendogame.data.remote.RetrofitClient
+import cl.triskeledu.aprendogame.data.remote.dto.CapsulaGestionBackendDto
+
+private class VideoRemotoFaltanteException(message: String) : IllegalStateException(message)
 
 // Identificador estable por contenido: permite recuperar el QR al reabrir la pantalla.
 private fun prefijoQrContenido(contenidoId: Int): String =
@@ -74,6 +79,195 @@ fun GestionQrScreen(onVolverClick: () -> Unit) {
     var procesandoId by remember { mutableStateOf<Int?>(null) }
     var mensaje by remember { mutableStateOf("") }
     var codigoQrParaGuardar by remember { mutableStateOf<String?>(null) }
+    // Fuente de verdad: QR publicados que devolvió MySQL, NO los QR de Room.
+    val qrPublicadosMySql = remember { mutableStateMapOf<Int, String>() }
+    var consultandoMySql by remember { mutableStateOf(true) }
+
+
+    suspend fun sincronizarQrBackend(contenidoLocalId: Int): String =
+        withContext(Dispatchers.IO) {
+
+            val authorization =
+                SessionManager(context.applicationContext)
+                    .obtenerAuthorizationHeader()
+                    ?: error("Inicia sesión como administrador del backend.")
+
+            val contenido = contenidos.firstOrNull {
+                it.id == contenidoLocalId
+            } ?: error("No se encontró el contenido local.")
+
+            val video = videos.firstOrNull {
+                it.contenidoId == contenido.id
+            } ?: error("El contenido no tiene video.")
+
+            val puntoLocalId = contenido.puntoId
+                ?: error("El contenido no tiene punto turístico.")
+
+            // Buscar el contenido correspondiente en MySQL.
+            val consultaContenidos =
+                RetrofitClient.localizacionesApi
+                    .obtenerContenidos(authorization)
+
+            if (!consultaContenidos.isSuccessful) {
+                error("Error al consultar contenidos: HTTP ${consultaContenidos.code()}")
+            }
+
+            val coincidencias = consultaContenidos.body().orEmpty().filter {
+                it.titulo == contenido.titulo &&
+                        it.descripcion == contenido.descripcion &&
+                        it.categoria == contenido.categoria
+            }
+
+            if (coincidencias.size != 1) {
+                error("No se identificó una única cápsula en MySQL.")
+            }
+
+            val contenidoRemoto = coincidencias.single()
+            val contenidoBackendId = contenidoRemoto.id
+                ?: error("El contenido remoto no tiene ID.")
+
+            val puntoBackendId = contenidoRemoto.puntoId
+                ?: error("El contenido remoto no tiene punto turístico.")
+
+            // Buscar el video correspondiente en MySQL.
+            val consultaVideos =
+                RetrofitClient.localizacionesApi
+                    .obtenerVideos(authorization)
+
+            if (!consultaVideos.isSuccessful) {
+                error("Error al consultar videos: HTTP ${consultaVideos.code()}")
+            }
+
+            val videosBackend = consultaVideos.body().orEmpty().filter {
+                it.contenidoId == contenidoBackendId
+            }
+
+            if (videosBackend.isEmpty()) {
+                throw VideoRemotoFaltanteException(
+                    "El contenido '${contenido.titulo}' todavía no tiene video en MySQL."
+                )
+            }
+            if (videosBackend.size > 1) {
+                error("Hay varios videos en MySQL asociados a '${contenido.titulo}'.")
+            }
+
+            val videoBackend = videosBackend.single()
+            val videoBackendId = videoBackend.id
+                ?: error("El video remoto no tiene ID.")
+
+            // Comprobar si ya existe un QR remoto.
+            val consultaCapsulas =
+                RetrofitClient.localizacionesApi
+                    .obtenerCapsulasBackend(authorization)
+
+            if (!consultaCapsulas.isSuccessful) {
+                error("Error al consultar QR: HTTP ${consultaCapsulas.code()}")
+            }
+
+            val capsulasBackend = consultaCapsulas.body().orEmpty().filter {
+                it.contenidoId == contenidoBackendId
+            }
+
+            if (capsulasBackend.size > 1) {
+                error("Hay varios QR remotos para este contenido.")
+            }
+
+            val capsulaRemota = if (capsulasBackend.isNotEmpty()) {
+                capsulasBackend.single()
+            } else {
+                val respuesta =
+                    RetrofitClient.localizacionesApi.crearCapsulaBackend(
+                        authorization,
+                        CapsulaGestionBackendDto(
+                            puntoId = puntoBackendId,
+                            contenidoId = contenidoBackendId,
+                            videoId = videoBackendId,
+                            titulo = contenidoRemoto.titulo,
+                            descripcion = contenidoRemoto.descripcion,
+                            urlVideo = videoBackend.urlVideo,
+                            categoria = contenidoRemoto.categoria
+                        )
+                    )
+
+                if (!respuesta.isSuccessful) {
+                    error("No se creó el QR: HTTP ${respuesta.code()}")
+                }
+
+                respuesta.body()
+                    ?: error("El backend no devolvió la cápsula.")
+            }
+
+            // Publicar en MySQL.
+            val publicada = if (capsulaRemota.estado == "PUBLICADA") {
+                capsulaRemota
+            } else {
+                val id = capsulaRemota.id
+                    ?: error("El QR remoto no tiene ID.")
+
+                val respuesta =
+                    RetrofitClient.localizacionesApi.publicarCapsulaBackend(
+                        authorization,
+                        id
+                    )
+
+                if (!respuesta.isSuccessful) {
+                    error("No se publicó el QR: HTTP ${respuesta.code()}")
+                }
+
+                respuesta.body()
+                    ?: error("El backend no devolvió el QR publicado.")
+            }
+
+            val codigoDefinitivo = publicada.codigoQr
+                ?.takeIf { it.isNotBlank() }
+                ?: error("El backend no devolvió un código QR válido.")
+
+            // Sincronizar Room conservando el ID local.
+            val prefijo = prefijoQrContenido(contenidoLocalId)
+
+            val capsulasLocales = capsulaDao.getTodasLasCapsulas().first()
+            val capsulasRelacionadas = capsulasLocales.filter { capsula ->
+                capsula.codigoQr == codigoDefinitivo ||
+                        capsula.codigoQr.startsWith(prefijo) ||
+                        (capsula.titulo == contenido.titulo &&
+                                capsula.descripcion == contenido.descripcion &&
+                                capsula.categoria == contenido.categoria &&
+                                capsula.puntoId == puntoLocalId &&
+                                capsula.urlVideo == video.urlVideo)
+            }
+            if (capsulasRelacionadas.size > 1) {
+                error("Se encontraron varias cápsulas locales para este contenido. No se modificó Room.")
+            }
+            val capsulaLocal = capsulasRelacionadas.singleOrNull()
+
+            if (capsulaLocal != null) {
+                val filas = capsulaDao.actualizarQrBackend(
+                    id = capsulaLocal.id,
+                    codigoQr = codigoDefinitivo,
+                    estado = publicada.estado
+                )
+
+                if (filas != 1) {
+                    error("El QR se publicó en MySQL, pero no se actualizó Room.")
+                }
+            } else {
+                capsulaDao.registrarNuevaCapsula(
+                    Capsula(
+                        titulo = contenido.titulo,
+                        codigoQr = codigoDefinitivo,
+                        urlVideo = video.urlVideo,
+                        puntos = 10,
+                        puntoId = puntoLocalId,
+                        descripcion = contenido.descripcion,
+                        categoria = contenido.categoria,
+                        estado = publicada.estado
+                    )
+                )
+            }
+
+            "QR sincronizado y publicado correctamente."
+        }
+
 
     val guardarImagenQr = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("image/png")
@@ -103,6 +297,96 @@ fun GestionQrScreen(onVolverClick: () -> Unit) {
     val contenidosDisponibles = contenidos.filter { contenido ->
         contenido.puntoId != null && videos.any { video ->
             video.contenidoId == contenido.id && video.urlVideo.isNotBlank()
+        }
+    }
+
+    // Lee los QR desde MySQL para mostrarlos. Room solo aporta datos locales para
+    // reconocer contenidos antiguos; nunca se usa como prueba de publicación.
+    suspend fun cargarQrDesdeMySql() {
+        val resultado = withContext(Dispatchers.IO) {
+            val authorization = SessionManager(context.applicationContext)
+                .obtenerAuthorizationHeader()
+                ?: error("Inicia sesión como administrador del backend.")
+
+            val respuestaContenidos = RetrofitClient.localizacionesApi
+                .obtenerContenidos(authorization)
+            if (!respuestaContenidos.isSuccessful) {
+                error("Error consultando contenidos: HTTP ${respuestaContenidos.code()}")
+            }
+            val respuestaQr = RetrofitClient.localizacionesApi
+                .obtenerCapsulasBackend(authorization)
+            if (!respuestaQr.isSuccessful) {
+                error("Error consultando QR: HTTP ${respuestaQr.code()}")
+            }
+            val remotos = respuestaContenidos.body().orEmpty()
+            val capsulasRemotas = respuestaQr.body().orEmpty()
+            val mapa = mutableMapOf<Int, String>()
+            for (local in contenidosDisponibles) {
+                val coincidencias = remotos.filter {
+                    it.titulo == local.titulo &&
+                            it.descripcion == local.descripcion &&
+                            it.categoria == local.categoria
+                }
+                if (coincidencias.size != 1) continue
+                val remotoId = coincidencias.single().id ?: continue
+                val publicadas = capsulasRemotas.filter {
+                    it.contenidoId == remotoId && it.estado == "PUBLICADA" &&
+                            !it.codigoQr.isNullOrBlank()
+                }
+                if (publicadas.size == 1) {
+                    mapa[local.id] = publicadas.single().codigoQr!!
+                }
+            }
+            mapa
+        }
+        qrPublicadosMySql.clear()
+        qrPublicadosMySql.putAll(resultado)
+    }
+
+    // Migración automática una vez por entrada a la pantalla: solo QR antiguos
+    // de Room. Los QR nuevos se crean únicamente al tocar Generar y asignar QR.
+    val intentosMigracion = remember { mutableStateListOf<Int>() }
+    LaunchedEffect(contenidosDisponibles, capsulas) {
+        if (contenidosDisponibles.isEmpty()) return@LaunchedEffect
+        consultandoMySql = true
+        try {
+            cargarQrDesdeMySql()
+            val errores = mutableListOf<String>()
+            for (contenido in contenidosDisponibles) {
+                if (qrPublicadosMySql.containsKey(contenido.id)) continue
+                if (contenido.id in intentosMigracion) continue
+                val prefijo = prefijoQrContenido(contenido.id)
+                val videoLocal = videos.firstOrNull {
+                    it.contenidoId == contenido.id && it.urlVideo.isNotBlank()
+                }
+                val qrLocalAntiguo = capsulas.any { capsula ->
+                    capsula.codigoQr.startsWith(prefijo) ||
+                            (capsula.titulo == contenido.titulo &&
+                                    capsula.descripcion == contenido.descripcion &&
+                                    capsula.categoria == contenido.categoria &&
+                                    capsula.puntoId == contenido.puntoId &&
+                                    capsula.urlVideo == videoLocal?.urlVideo)
+                }
+                if (!qrLocalAntiguo) continue
+                intentosMigracion.add(contenido.id)
+                procesandoId = contenido.id
+                try {
+                    sincronizarQrBackend(contenido.id)
+                    // Volver a consultar MySQL antes de mostrar el QR.
+                    cargarQrDesdeMySql()
+                } catch (e: VideoRemotoFaltanteException) {
+                    errores.add("${contenido.titulo}: video pendiente en MySQL")
+                } catch (e: Exception) {
+                    errores.add("${contenido.titulo}: ${e.message ?: "error"}")
+                } finally {
+                    procesandoId = null
+                }
+            }
+            if (errores.isNotEmpty()) mensaje = errores.joinToString("; ")
+        } catch (e: Exception) {
+            mensaje = "No se pudieron consultar los QR en MySQL: ${e.message ?: "error"}"
+        } finally {
+            consultandoMySql = false
         }
     }
 
@@ -156,13 +440,8 @@ fun GestionQrScreen(onVolverClick: () -> Unit) {
             }
 
             items(contenidosDisponibles, key = { it.id }) { contenido ->
-                // No se usa puntoId para identificar el QR: varios contenidos
-                // pueden pertenecer al mismo lugar turístico.
-                val prefijo = prefijoQrContenido(contenido.id)
-                val capsulaExistente = capsulas.firstOrNull {
-                    it.codigoQr.startsWith(prefijo)
-                }
-                val codigoQr = capsulaExistente?.codigoQr
+                // El QR visible viene exclusivamente de la respuesta de MySQL.
+                val codigoQr = qrPublicadosMySql[contenido.id]
 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -194,10 +473,7 @@ fun GestionQrScreen(onVolverClick: () -> Unit) {
                         )
 
                         if (codigoQr != null) {
-                            Text(
-                                "QR asignado",
-                                color = MaterialTheme.colorScheme.primary
-                            )
+                            Text("QR publicado en MySQL", color = MaterialTheme.colorScheme.primary)
                             val imagenQr = remember(codigoQr) {
                                 generarImagenQr(codigoQr).asImageBitmap()
                             }
@@ -214,6 +490,7 @@ fun GestionQrScreen(onVolverClick: () -> Unit) {
                                         "Triskeledu_QR_${contenido.id}.png"
                                     )
                                 },
+                                enabled = procesandoId == null && !consultandoMySql,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text("Guardar QR en PNG")
@@ -224,65 +501,40 @@ fun GestionQrScreen(onVolverClick: () -> Unit) {
                             )
                         } else {
                             Text(
-                                "Video asignado · Falta QR",
+                                if (consultandoMySql) "Consultando QR en MySQL..." else "Video asignado · Falta QR publicado en MySQL",
                                 color = MaterialTheme.colorScheme.primary
                             )
+
                             Button(
                                 onClick = {
                                     scope.launch {
                                         procesandoId = contenido.id
                                         mensaje = ""
-                                        try {
-                                            val video = videos.firstOrNull {
-                                                it.contenidoId == contenido.id &&
-                                                        it.urlVideo.isNotBlank()
-                                            } ?: error("No se encontró el video")
-                                            val puntoId = contenido.puntoId
-                                                ?: error("El contenido no tiene punto turístico")
 
-                                            val nuevoCodigo = prefijoQrContenido(contenido.id) +
-                                                    UUID.randomUUID().toString()
-                                            val resultado = withContext(Dispatchers.IO) {
-                                                // Evita duplicar el QR de este contenido.
-                                                val existe = capsulaDao.getTodasLasCapsulas()
-                                                    .first().any { it.codigoQr.startsWith(prefijo) }
-                                                if (existe) error("Este contenido ya tiene un QR")
-                                                capsulaDao.registrarNuevaCapsula(
-                                                    Capsula(
-                                                        titulo = contenido.titulo,
-                                                        codigoQr = nuevoCodigo,
-                                                        urlVideo = video.urlVideo,
-                                                        puntos = 10,
-                                                        puntoId = puntoId,
-                                                        descripcion = contenido.descripcion,
-                                                        categoria = contenido.categoria,
-                                                        estado = "PUBLICADA"
-                                                    )
-                                                )
-                                            }
-                                            mensaje = if (resultado > 0L) {
-                                                "QR creado para ${contenido.titulo}"
-                                            } else {
-                                                "No se pudo crear el QR"
-                                            }
+                                        try {
+                                            mensaje = sincronizarQrBackend(contenido.id)
+                                            cargarQrDesdeMySql()
                                         } catch (e: Exception) {
                                             mensaje = "Error: ${e.message ?: "Desconocido"}"
+                                            // Si MySQL publicó pero falló Room, reflejar el estado remoto.
+                                            try { cargarQrDesdeMySql() } catch (_: Exception) { }
                                         } finally {
                                             procesandoId = null
                                         }
                                     }
                                 },
-                                enabled = procesandoId == null,
+                                enabled = procesandoId == null && !consultandoMySql,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text(
                                     if (procesandoId == contenido.id) {
-                                        "Generando QR..."
+                                        "Sincronizando QR..."
                                     } else {
                                         "Generar y asignar QR"
                                     }
                                 )
                             }
+
                         }
                     }
                 }
@@ -290,6 +542,3 @@ fun GestionQrScreen(onVolverClick: () -> Unit) {
         }
     }
 }
-
-
-

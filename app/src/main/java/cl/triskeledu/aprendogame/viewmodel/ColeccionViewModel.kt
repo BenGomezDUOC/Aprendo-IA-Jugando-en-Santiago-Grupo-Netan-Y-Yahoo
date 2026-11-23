@@ -24,6 +24,15 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+
+import cl.triskeledu.aprendogame.data.local.SessionManager
+import cl.triskeledu.aprendogame.data.remote.RetrofitClient
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
+import android.util.Log
+
+
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class ColeccionViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -33,6 +42,13 @@ class ColeccionViewModel(application: Application) : AndroidViewModel(applicatio
     // DAO independiente para los dos videos adicionales.
     private val videoAdicionalVistoDao =
         AppDatabase.getInstance(application).videoAdicionalVistoDao()
+
+
+    private val sesion = SessionManager(application)
+
+    private fun autorizacion(token: String): String =
+        if (token.startsWith("Bearer ")) token else "Bearer $token"
+
 
     // --------------------------------------------------
     // USUARIO ACTIVO
@@ -203,50 +219,114 @@ class ColeccionViewModel(application: Application) : AndroidViewModel(applicatio
     fun registrarVideoVisto(capsulaId: Int) {
         val idJugador = _usuarioActivoId.value ?: return
 
+        android.util.Log.d(
+            "VIDEO_BACKEND",
+            "Se ejecutó registrarVideoVisto. CapsulaId: $capsulaId"
+        )
+
         viewModelScope.launch {
-            repository.registrarVideoVisto(
-                VideoVisto(
-                    usuarioId = idJugador,
-                    capsulaId = capsulaId
+            try {
+                val token = sesion.obtenerTokenBackend()
+                val backendId = sesion.obtenerUsuarioBackendId()
+
+                if (token != null && backendId != null) {
+                    val capsulaLocal = repository.getTodasLasCapsulas()
+                        .first()
+                        .firstOrNull { it.id == capsulaId }
+                        ?: error("No se encontró la cápsula local")
+
+                    val capsulaRemota = withContext(Dispatchers.IO) {
+                        val respuesta = RetrofitClient.localizacionesApi
+                            .validarCapsulaQr(
+                                autorizacion(token),
+                                capsulaLocal.codigoQr
+                            )
+
+                        if (!respuesta.isSuccessful) {
+                            error("Validación QR HTTP ${respuesta.code()}")
+                        }
+
+                        respuesta.body()
+                            ?: error("No se encontró la cápsula en MySQL")
+                    }
+
+                    val respuesta = withContext(Dispatchers.IO) {
+                        RetrofitClient.premiosApi.registrarVideoVistoBackend(
+                            autorizacion(token),
+                            capsulaRemota.id
+                        )
+                    }
+
+                    if (!respuesta.isSuccessful) {
+                        error("Registro de video HTTP ${respuesta.code()}")
+                    }
+                }
+
+                repository.registrarVideoVisto(
+                    VideoVisto(
+                        usuarioId = idJugador,
+                        capsulaId = capsulaId
+                    )
                 )
-            )
-            registrarNotificacionInterna(
-                titulo = "¡Cápsula de IA completada! 🎬",
-                mensaje = "Has completado la visualización de la cápsula educativa.",
-                tipo = "VIDEO",
-                rutaDestino = "coleccion"
-            )
+
+                registrarNotificacionInterna(
+                    titulo = "¡Cápsula de IA completada! 🎬",
+                    mensaje = "Has completado la visualización de la cápsula educativa.",
+                    tipo = "VIDEO",
+                    rutaDestino = "coleccion"
+                )
+            } catch (e: Exception) {
+                Log.e("VIDEO_BACKEND", "Error al registrar video QR", e)
+            }
         }
     }
+
 
     // Registra el video adicional cuando termina.
     // No otorga puntos ni registra descubrimientos QR.
-    fun registrarVideoAdicionalVisto(videoAdicionalId: Int) {
 
-        // Solo existen dos videos adicionales.
+    fun registrarVideoAdicionalVisto(videoAdicionalId: Int) {
         if (videoAdicionalId !in 1..2) return
 
-        // Identifica al usuario que está viendo el video.
         val idJugador = _usuarioActivoId.value ?: return
 
         viewModelScope.launch {
+            try {
+                val token = sesion.obtenerTokenBackend()
+                val backendId = sesion.obtenerUsuarioBackendId()
 
-            // Guarda el registro en Room.
-            // El DAO evita registrar el mismo video dos veces.
-            videoAdicionalVistoDao.registrarVideoVisto(
-                VideoAdicionalVisto(
-                    usuarioId = idJugador,
-                    videoAdicionalId = videoAdicionalId
+                if (token != null && backendId != null) {
+                    val respuesta = withContext(Dispatchers.IO) {
+                        RetrofitClient.premiosApi
+                            .registrarVideoAdicionalVistoBackend(
+                                autorizacion(token),
+                                videoAdicionalId
+                            )
+                    }
+
+                    if (!respuesta.isSuccessful) {
+                        error("Registro de video adicional HTTP ${respuesta.code()}")
+                    }
+                }
+
+                videoAdicionalVistoDao.registrarVideoVisto(
+                    VideoAdicionalVisto(
+                        usuarioId = idJugador,
+                        videoAdicionalId = videoAdicionalId
+                    )
                 )
-            )
+            } catch (e: Exception) {
+                Log.e("VIDEO_BACKEND", "Error al registrar video adicional", e)
+            }
         }
     }
+
 
     // --------------------------------------------------
     // VIDEOS SIN QR CREADOS POR EL ADMINISTRADOR
     // --------------------------------------------------
 
-    // Utiliza IDs negativos para diferenciarlos de los
+    // Utiliza IDs negativos para diferenciarlos de los;
     // dos videos adicionales originales (IDs 1 y 2).
     // No otorga puntos ni registra descubrimientos QR.
     fun registrarVideoAdministradorVisto(videoRegistradoId: Int) {

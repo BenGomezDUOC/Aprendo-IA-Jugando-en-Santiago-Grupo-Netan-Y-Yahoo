@@ -1,4 +1,3 @@
-
 package cl.triskeledu.aprendogame.viewmodel
 
 import android.app.Application
@@ -6,16 +5,21 @@ import android.location.Address
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import cl.triskeledu.aprendogame.data.local.AppDatabase
+import cl.triskeledu.aprendogame.data.local.SessionManager
+import cl.triskeledu.aprendogame.data.remote.RetrofitClient
+import cl.triskeledu.aprendogame.data.remote.dto.PuntoInteresBackendDto
+import android.util.Log
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import cl.triskeledu.aprendogame.location.ServicioGeografico
 import cl.triskeledu.aprendogame.location.UbicacionGeografica
 import cl.triskeledu.aprendogame.model.PuntoInteres
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 // Guarda todos los estados del formulario.
@@ -63,6 +67,17 @@ class GestionPuntosViewModel(
     private val servicioGeografico =
         ServicioGeografico(application)
 
+    private val sesion = SessionManager(application)
+
+    // Evita que la migración vuelva a crear en MySQL un punto eliminado.
+    private val puntosEliminados = application.getSharedPreferences(
+        "puntos_eliminados_mysql", android.content.Context.MODE_PRIVATE
+    )
+
+    private fun claveLocal(punto: PuntoInteres): String =
+        "${punto.nombre.trim().lowercase(java.util.Locale.ROOT)}|${punto.latitud}|${punto.longitud}"
+
+
     // -------------------------------------------------
     // ESTADO DEL FORMULARIO
     // -------------------------------------------------
@@ -72,12 +87,181 @@ class GestionPuntosViewModel(
 
     val estado = _estado.asStateFlow()
 
-    // Observa los puntos turísticos registrados en Room.
-    val puntos = puntoDao.getPuntos().stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = emptyList()
-    )
+    // La lista de Administración refleja únicamente los puntos confirmados en MySQL.
+    // Se conservan los ID locales al actualizar la caché para no romper las relaciones Room.
+    private val _puntos = MutableStateFlow<List<PuntoInteres>>(emptyList())
+    val puntos = _puntos.asStateFlow()
+
+    init {
+        sincronizarPuntos()
+    }
+
+    /**
+     * Migración idempotente Room -> MySQL y actualización de la caché.
+     * Nunca borra registros de Room ni modifica registros existentes de MySQL.
+     * Si se interrumpe, al reintentar verifica nuevamente el servidor antes de crear.
+     */
+    fun sincronizarPuntos() {
+        viewModelScope.launch {
+            try {
+                val auth = sesion.obtenerAuthorizationHeader()
+                    ?: error("Debes iniciar sesión en el backend para consultar MySQL.")
+                val locales = puntoDao.getPuntos().first()
+                val listaConfirmada = withContext(Dispatchers.IO) {
+                    val api = RetrofitClient.localizacionesApi
+                    val primera = api.obtenerPuntos(auth)
+                    if (!primera.isSuccessful) error("No se pudieron consultar puntos de MySQL (HTTP ${primera.code()}).")
+                    val remotos = primera.body().orEmpty().toMutableList()
+                    val fallos = mutableListOf<String>()
+
+                    // Nombre único: criterio conservador para no crear duplicados si
+                    // alguien corrigió dirección o coordenadas después de crear el punto.
+                    for (local in locales) {
+                        if (puntosEliminados.getBoolean(claveLocal(local), false)) continue
+                        val mismoNombre = remotos.filter {
+                            it.nombre.trim().equals(local.nombre.trim(), ignoreCase = true)
+                        }
+                        if (mismoNombre.isNotEmpty()) continue
+                        // No enviar URI content:// o file://: el backend exige URL multimedia válida.
+                        val imagenRemota = local.imagenUri?.takeIf {
+                            it.startsWith("/api/localizaciones/multimedia/") ||
+                                    it.startsWith("http://10.0.2.2:8083/api/localizaciones/multimedia/")
+                        }
+                        val solicitud = PuntoInteresBackendDto(
+                            id = 0L,
+                            codigo = "",
+                            nombre = local.nombre,
+                            descripcion = local.descripcion,
+                            direccion = local.direccion,
+                            latitud = local.latitud,
+                            longitud = local.longitud,
+                            altitud = local.altitud,
+                            radioToleranciaMetros = local.radioToleranciaMetros,
+                            imagenUri = imagenRemota,
+                            completado = false,
+                            puntosRecompensa = 100,
+                            qrEsperado = ""
+                        )
+                        try {
+                            val creado = api.crearPunto(auth, solicitud)
+                            if (creado.isSuccessful && creado.body() != null) {
+                                remotos.add(creado.body()!!)
+                            } else {
+                                fallos.add("${local.nombre}: HTTP ${creado.code()}")
+                            }
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            fallos.add("${local.nombre}: ${e.message ?: "sin conexión"}")
+                        }
+                    }
+                    val refresco = api.obtenerPuntos(auth)
+                    if (!refresco.isSuccessful) error("No se pudo verificar MySQL (HTTP ${refresco.code()}).")
+                    Pair(refresco.body().orEmpty(), fallos)
+                }
+
+                val (remotosVerificados, fallos) = listaConfirmada
+                val actuales = puntoDao.getPuntos().first().toMutableList()
+                val visibles = mutableListOf<PuntoInteres>()
+                for (remoto in remotosVerificados) {
+                    val local = actuales.firstOrNull {
+                        it.nombre.trim().equals(remoto.nombre.trim(), ignoreCase = true)
+                    }
+                    val actualizado = PuntoInteres(
+                        id = local?.id ?: 0,
+                        nombre = remoto.nombre,
+                        descripcion = remoto.descripcion ?: "",
+                        direccion = remoto.direccion ?: "",
+                        latitud = remoto.latitud ?: continue,
+                        longitud = remoto.longitud ?: continue,
+                        altitud = remoto.altitud ?: 0.0,
+                        radioToleranciaMetros = remoto.radioToleranciaMetros ?: 50.0,
+                        imagenUri = remoto.imagenUri ?: local?.imagenUri,
+                        completado = local?.completado ?: false
+                    )
+                    val cache = if (local == null) {
+                        actualizado.copy(id = puntoDao.crearPunto(actualizado).toInt())
+                    } else {
+                        puntoDao.actualizar(actualizado)
+                        actualizado
+                    }
+                    visibles.add(cache)
+                    if (local == null) actuales.add(cache)
+                }
+                _puntos.value = visibles
+                if (fallos.isNotEmpty()) {
+                    informar("No se migraron todos los puntos: ${fallos.joinToString("; ")}", true)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e("PUNTOS_MYSQL", "Error al sincronizar", e)
+                informar("No se pudo sincronizar con MySQL: ${e.message}", true)
+            }
+        }
+    }
+
+    /** Elimina exclusivamente el punto indicado, una vez confirmado por el usuario.
+     * Spring Boot impide borrar puntos que tengan contenidos o cápsulas asociados.
+     */
+    fun eliminarPunto(punto: PuntoInteres) {
+        if (_estado.value.ocupado) return
+        _estado.update { it.copy(guardando = true, mensaje = "", mensajeError = false) }
+        viewModelScope.launch {
+            try {
+                val auth = sesion.obtenerAuthorizationHeader()
+                    ?: error("Inicia sesión como Administrador para eliminar puntos en MySQL.")
+                val idRemoto = withContext(Dispatchers.IO) {
+                    val api = RetrofitClient.localizacionesApi
+                    val consulta = api.obtenerPuntos(auth)
+                    if (!consulta.isSuccessful) error("No se pudo consultar MySQL (HTTP ${consulta.code()}).")
+                    val matches = consulta.body().orEmpty().filter { remoto ->
+                        remoto.nombre.trim().equals(punto.nombre.trim(), ignoreCase = true) &&
+                                remoto.latitud != null && remoto.longitud != null &&
+                                kotlin.math.abs(remoto.latitud - punto.latitud) < 0.0001 &&
+                                kotlin.math.abs(remoto.longitud - punto.longitud) < 0.0001
+                    }
+                    if (matches.size != 1) {
+                        error("No se identificó de manera única el punto en MySQL. No se eliminó nada.")
+                    }
+                    val id = matches.single().id
+                    val respuesta = api.eliminarPunto(auth, id)
+                    if (!respuesta.isSuccessful) {
+                        when (respuesta.code()) {
+                            409 -> error("No puedes eliminar este punto porque tiene contenidos o cápsulas asociados.")
+                            403 -> error("Tu usuario no tiene permiso para eliminar puntos.")
+                            404 -> error("El punto ya no existe en MySQL. Actualiza la lista.")
+                            else -> error("No se eliminó en MySQL (HTTP ${respuesta.code()}).")
+                        }
+                    }
+                    id
+                }
+                // Primero marcar como eliminado: nunca volver a importarlo desde Room.
+                puntosEliminados.edit().putBoolean(claveLocal(punto), true).apply()
+                _puntos.value = _puntos.value.filterNot { it.id == punto.id }
+                // La caché es secundaria. Si su borrado falla, la marca evita remigración.
+                try {
+                    puntoDao.eliminarPuntoPorId(punto.id)
+                } catch (e: Exception) {
+                    Log.w("PUNTOS_MYSQL", "Eliminado en MySQL, caché local conservada: $idRemoto", e)
+                }
+                _estado.update { actual ->
+                    if (actual.puntoEnEdicion?.id == punto.id) GestionPuntosUiState(
+                        guardando = true,
+                        mensaje = "Punto eliminado de MySQL correctamente."
+                    ) else actual.copy(mensaje = "Punto eliminado de MySQL correctamente.", mensajeError = false)
+                }
+                sincronizarPuntos()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e("PUNTOS_MYSQL", "Fallo al eliminar punto", e)
+                informar(e.message ?: "No se pudo eliminar el punto turístico.", true)
+            } finally {
+                _estado.update { it.copy(guardando = false) }
+            }
+        }
+    }
 
     // -------------------------------------------------
     // ACTUALIZAR CAMPOS DEL FORMULARIO
@@ -517,17 +701,113 @@ class GestionPuntosViewModel(
                 )
 
                 if (puntoExistente != null) {
+                    // Si hay sesión remota, primero se confirma el cambio
+                    // en MySQL; no mostrar éxito por actualizar solo Room.
+                    val authorization = sesion.obtenerAuthorizationHeader()
+                    if (authorization != null) {
+                        withContext(Dispatchers.IO) {
+                            val consulta = RetrofitClient.localizacionesApi
+                                .obtenerPuntos(authorization)
+                            if (!consulta.isSuccessful) {
+                                error("No se pudieron consultar puntos (HTTP ${consulta.code()})")
+                            }
 
-                    puntoDao.actualizar(
-                        puntoParaGuardar
-                    )
+                            val candidatos = consulta.body().orEmpty().filter { remoto ->
+                                // Room y MySQL NO comparten obligatoriamente ID.
+                                // Buscar el lugar original, nunca el nuevo nombre editado.
+                                val mismoNombre = remoto.nombre.trim().equals(
+                                    puntoExistente.nombre.trim(), ignoreCase = true
+                                )
+                                val mismaDireccion = remoto.direccion?.trim()?.equals(
+                                    puntoExistente.direccion.trim(), ignoreCase = true
+                                ) == true
+                                val mismasCoordenadas =
+                                    remoto.latitud != null && remoto.longitud != null &&
+                                            kotlin.math.abs(remoto.latitud - puntoExistente.latitud) < 0.0001 &&
+                                            kotlin.math.abs(remoto.longitud - puntoExistente.longitud) < 0.0001
+                                mismoNombre && (mismaDireccion || mismasCoordenadas)
+                            }
 
+                            if (candidatos.size != 1) {
+                                error("No se identificó un único punto en MySQL. Coincidencias: ${candidatos.size}. No se modificó nada.")
+                            }
+
+                            val remoto = candidatos.single()
+                            val solicitud = PuntoInteresBackendDto(
+                                id = remoto.id,
+                                codigo = remoto.codigo,
+                                nombre = puntoParaGuardar.nombre,
+                                descripcion = puntoParaGuardar.descripcion,
+                                direccion = puntoParaGuardar.direccion,
+                                latitud = puntoParaGuardar.latitud,
+                                longitud = puntoParaGuardar.longitud,
+                                altitud = puntoParaGuardar.altitud,
+                                radioToleranciaMetros = puntoParaGuardar.radioToleranciaMetros,
+                                imagenUri = puntoParaGuardar.imagenUri?.takeIf {
+                                    it.startsWith("/api/localizaciones/multimedia/") ||
+                                            it.startsWith("http://10.0.2.2:8083/api/localizaciones/multimedia/")
+                                } ?: remoto.imagenUri,
+                                completado = remoto.completado,
+                                puntosRecompensa = remoto.puntosRecompensa,
+                                qrEsperado = remoto.qrEsperado
+                            )
+                            val actualizacion = RetrofitClient.localizacionesApi
+                                .actualizarPunto(authorization, remoto.id, solicitud)
+                            if (!actualizacion.isSuccessful) {
+                                error("No se actualizó el punto en MySQL (HTTP ${actualizacion.code()})")
+                            }
+                        }
+                    } else {
+                        // Las cuentas exclusivamente locales no tienen JWT.
+                        // No se debe informar que se sincronizó con MySQL.
+                        error("Inicia sesión con un administrador del backend para actualizar MySQL.")
+                    }
+                    puntoDao.actualizar(puntoParaGuardar)
                 } else {
+                    // MySQL es la fuente principal. No registrar únicamente en Room.
+                    val authorization = sesion.obtenerAuthorizationHeader()
+                        ?: error("Inicia sesión con un administrador del backend para crear el punto.")
+                    withContext(Dispatchers.IO) {
+                        val consulta = RetrofitClient.localizacionesApi.obtenerPuntos(authorization)
+                        if (!consulta.isSuccessful) {
+                            error("No se pudieron consultar puntos en MySQL (HTTP ${consulta.code()})")
+                        }
+                        val yaExiste = consulta.body().orEmpty().any { remoto ->
+                            remoto.nombre.trim().equals(puntoParaGuardar.nombre, ignoreCase = true) &&
+                                    remoto.latitud != null && remoto.longitud != null &&
+                                    kotlin.math.abs(remoto.latitud - puntoParaGuardar.latitud) < 0.0001 &&
+                                    kotlin.math.abs(remoto.longitud - puntoParaGuardar.longitud) < 0.0001
+                        }
+                        if (yaExiste) error("Este punto ya existe en MySQL. No se creó un duplicado.")
 
-                    puntoDao.crearPunto(
-                        puntoParaGuardar
-                    )
+                        val solicitud = PuntoInteresBackendDto(
+                            id = 0L,
+                            codigo = "",
+                            nombre = puntoParaGuardar.nombre,
+                            descripcion = puntoParaGuardar.descripcion,
+                            direccion = puntoParaGuardar.direccion,
+                            latitud = puntoParaGuardar.latitud,
+                            longitud = puntoParaGuardar.longitud,
+                            altitud = puntoParaGuardar.altitud,
+                            radioToleranciaMetros = puntoParaGuardar.radioToleranciaMetros,
+                            imagenUri = puntoParaGuardar.imagenUri?.takeIf {
+                                it.startsWith("/api/localizaciones/multimedia/") ||
+                                        it.startsWith("http://10.0.2.2:8083/api/localizaciones/multimedia/")
+                            },
+                            completado = false,
+                            puntosRecompensa = 100,
+                            qrEsperado = ""
+                        )
+                        val creacion = RetrofitClient.localizacionesApi.crearPunto(authorization, solicitud)
+                        if (!creacion.isSuccessful) {
+                            error("No se creó el punto en MySQL (HTTP ${creacion.code()})")
+                        }
+                        creacion.body() ?: error("MySQL no confirmó los datos del punto.")
+                    }
+                    // Caché local, únicamente después de confirmar el registro remoto.
+                    puntoDao.crearPunto(puntoParaGuardar)
                 }
+                sincronizarPuntos()
 
                 // Limpia los campos después de guardar.
                 _estado.value = GestionPuntosUiState(
@@ -546,9 +826,9 @@ class GestionPuntosViewModel(
                 throw e
 
             } catch (e: Exception) {
-
+                Log.e("PUNTOS_BACKEND", "Fallo al guardar el punto", e)
                 informar(
-                    "No se pudo guardar el punto turístico.",
+                    e.message ?: "No se pudo guardar el punto turístico.",
                     true
                 )
 
@@ -561,3 +841,4 @@ class GestionPuntosViewModel(
         }
     }
 }
+
