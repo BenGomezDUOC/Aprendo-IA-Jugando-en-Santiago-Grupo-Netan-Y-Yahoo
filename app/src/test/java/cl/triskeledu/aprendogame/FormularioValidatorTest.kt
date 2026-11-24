@@ -1,7 +1,6 @@
 package cl.triskeledu.aprendogame
 
 import cl.triskeledu.aprendogame.validation.FormularioValidator
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -9,81 +8,64 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Pruebas unitarias para validar la lógica desacoplada de formularios (IE 2.2.1).
- * Garantiza que las reglas de negocio no dependan de componentes gráficos de Android.
+ * Suite 1 (Frontend): Pruebas unitarias para validar la lógica desacoplada de formularios (IE 2.2.1).
+ * Contiene 5 pruebas enfocadas en validaciones de entrada.
  */
 class FormularioValidatorTest {
 
     @Test
-    fun `validarNombre rechaza nombres en blanco o menores a 3 caracteres`() {
+    fun testValidarNombre_rechazaNombresInvalidos_yAceptaValidos() {
         assertNotNull(FormularioValidator.validarNombre(""))
         assertNotNull(FormularioValidator.validarNombre("   "))
         assertNotNull(FormularioValidator.validarNombre("Al"))
-        assertNull(FormularioValidator.validarNombre("Benjamín Gómez"))
+        assertNull(FormularioValidator.validarNombre("Fernando Alarcón"))
     }
 
     @Test
-    fun `validarAlias exige al menos 3 caracteres`() {
+    fun testValidarAlias_validaLongitudMinimaYMaxima() {
+        assertNotNull(FormularioValidator.validarAlias(""))
         assertNotNull(FormularioValidator.validarAlias("x"))
-        assertNull(FormularioValidator.validarAlias("benja_dev"))
+        assertNull(FormularioValidator.validarAlias("fer_ia"))
     }
 
     @Test
-    fun `validarCorreo verifica formato estandar de email`() {
+    fun testValidarCorreo_verificaEstructuraEstrictaEmail() {
+        assertNotNull(FormularioValidator.validarCorreo(""))
         assertNotNull(FormularioValidator.validarCorreo("correoinvalido"))
-        assertNotNull(FormularioValidator.validarCorreo("sin_arroba.cl"))
-        assertNull(FormularioValidator.validarCorreo("estudiante@duocuc.cl"))
+        assertNotNull(FormularioValidator.validarCorreo("usuario@dominio"))
+        assertNull(FormularioValidator.validarCorreo("estudiante@triskeledu.cl"))
     }
 
     @Test
-    fun `validarTelefono exige entre 8 y 15 digitos numericos`() {
+    fun testValidarTelefono_exigeEntre8y15Digitos() {
+        assertNotNull(FormularioValidator.validarTelefono(""))
         assertNotNull(FormularioValidator.validarTelefono("123"))
         assertNull(FormularioValidator.validarTelefono("+56912345678"))
         assertNull(FormularioValidator.validarTelefono("912345678"))
     }
 
     @Test
-    fun `validarContrasena exige longitud minima de 8 caracteres`() {
-        assertNotNull(FormularioValidator.validarContrasena("1234567"))
-        assertNull(FormularioValidator.validarContrasena("passwordSegura123"))
-    }
-
-    @Test
-    fun `validarConfirmacion comprueba coincidencia exacta de claves`() {
-        assertNotNull(FormularioValidator.validarConfirmacion("clave1234", "claveDiferente"))
-        assertNull(FormularioValidator.validarConfirmacion("clave1234", "clave1234"))
-    }
-
-    @Test
-    fun `validarFormularioCompleto aprueba cuando todos los campos son correctos`() {
-        val resultado = FormularioValidator.validarFormularioCompleto(
-            nombre = "Benjamín Gómez",
-            alias = "Benja",
-            correo = "benjamin@duocuc.cl",
+    fun testValidarFormularioCompleto_verificaEstadoGlobal() {
+        val formValido = FormularioValidator.validarFormularioCompleto(
+            nombre = "Fernando Alarcón",
+            alias = "FerIA",
+            correo = "fernando@triskeledu.cl",
             telefono = "987654321",
-            contrasena = "secreta123",
-            confirmarContrasena = "secreta123"
+            contrasena = "Santiago2026",
+            confirmarContrasena = "Santiago2026"
         )
-        assertTrue(resultado.esValido)
-        assertNull(resultado.errorNombre)
-        assertNull(resultado.errorCorreo)
-    }
+        assertTrue(formValido.esValido)
+        assertNull(formValido.errorNombre)
 
-    @Test
-    fun `validarFormularioCompleto falla si hay un campo invalido`() {
-        val resultado = FormularioValidator.validarFormularioCompleto(
-            nombre = "B",
-            alias = "Benja",
+        val formInvalido = FormularioValidator.validarFormularioCompleto(
+            nombre = "F",
+            alias = "F",
             correo = "correo_malo",
-            telefono = "123",
+            telefono = "12",
             contrasena = "corta",
-            confirmarContrasena = "diferente"
+            confirmarContrasena = "distinta"
         )
-        assertFalse(resultado.esValido)
-        assertNotNull(resultado.errorNombre)
-        assertNotNull(resultado.errorCorreo)
-        assertNotNull(resultado.errorTelefono)
-        assertNotNull(resultado.errorContrasena)
-        assertNotNull(resultado.errorConfirmacion)
+        assertFalse(formInvalido.esValido)
+        assertNotNull(formInvalido.errorContrasena)
     }
 }

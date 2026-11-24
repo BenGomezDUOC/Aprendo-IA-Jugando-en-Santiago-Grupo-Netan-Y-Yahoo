@@ -10,13 +10,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Pruebas unitarias de las entidades y modelos de datos de gamificación
- * solicitadas en el documento del caso de Triskeledu SpA.
+ * Suite 2 (Frontend): Pruebas unitarias de modelos de datos y reglas de negocio de gamificación.
+ * Contiene 5 pruebas independientes.
  */
 class GamificacionDataTest {
 
     @Test
-    fun `verificar creacion de punto turistico con radio de tolerancia`() {
+    fun testPuntoInteres_creacionConToleranciaGeografica() {
         val punto = PuntoInteres(
             id = 1,
             nombre = "Plaza de Armas",
@@ -27,46 +27,64 @@ class GamificacionDataTest {
             completado = false,
             radioToleranciaMetros = 50.0
         )
-
         assertEquals("Plaza de Armas", punto.nombre)
         assertEquals(50.0, punto.radioToleranciaMetros, 0.001)
         assertTrue(!punto.completado)
     }
 
     @Test
-    fun `verificar asignacion de capsula de IA con codigo QR y puntos`() {
+    fun testCapsula_asignacionQrYPuntosEducativos() {
         val capsula = Capsula(
-            id = 1,
+            id = 10,
             puntoId = 1,
-            titulo = "IA en la Historia Urbana",
+            titulo = "Introducción a la IA",
             codigoQr = "QR_PLAZA_ARMAS",
-            urlVideo = "https://example.com/video.mp4",
-            puntos = 100
+            urlVideo = "https://triskeledu.cl/videos/ia1.mp4",
+            puntos = 10
         )
-
         assertEquals("QR_PLAZA_ARMAS", capsula.codigoQr)
-        assertEquals(100, capsula.puntos)
+        assertEquals(10, capsula.puntos)
         assertNotNull(capsula.urlVideo)
     }
 
     @Test
-    fun `verificar incremento de puntos de gamificacion para usuario cliente`() {
+    fun testUsuario_acumulacionProgresivaDePuntos() {
         var usuario = Usuario(
             id = 1,
             nombre = "Estudiante Duoc",
             rol = Rol.CLIENTE,
             puntosAcumulados = 0
         )
+        usuario = usuario.copy(puntosAcumulados = usuario.puntosAcumulados + 10)
+        assertEquals(10, usuario.puntosAcumulados)
 
-        // Simulación de completar 2 cápsulas de IA (100 pts + 150 pts)
-        val recompensa1 = 100
-        val recompensa2 = 150
+        usuario = usuario.copy(puntosAcumulados = usuario.puntosAcumulados + 100)
+        assertEquals(110, usuario.puntosAcumulados)
+    }
 
-        usuario = usuario.copy(puntosAcumulados = usuario.puntosAcumulados + recompensa1)
-        assertEquals(100, usuario.puntosAcumulados)
+    @Test
+    fun testUsuario_rolesPermitidosYValores() {
+        val admin = Usuario(id = 2, nombre = "Admin", rol = Rol.ADMINISTRADOR)
+        val generador = Usuario(id = 3, nombre = "Generador", rol = Rol.GENERADOR)
+        val cliente = Usuario(id = 4, nombre = "Jugador", rol = Rol.CLIENTE)
 
-        usuario = usuario.copy(puntosAcumulados = usuario.puntosAcumulados + recompensa2)
-        assertEquals(250, usuario.puntosAcumulados)
-        assertEquals(Rol.CLIENTE, usuario.rol)
+        assertEquals(Rol.ADMINISTRADOR, admin.rol)
+        assertEquals(Rol.GENERADOR, generador.rol)
+        assertEquals(Rol.CLIENTE, cliente.rol)
+    }
+
+    @Test
+    fun testCapsula_estadoPublicacionPorDefecto() {
+        val capsula = Capsula(
+            id = 5,
+            puntoId = 2,
+            titulo = "Visión por Computadora",
+            codigoQr = "QR_SANTA_LUCIA",
+            urlVideo = "https://example.com/vision.mp4",
+            puntos = 10,
+            estado = "PUBLICADA"
+        )
+        assertEquals("PUBLICADA", capsula.estado)
+        assertEquals(2, capsula.puntoId)
     }
 }
