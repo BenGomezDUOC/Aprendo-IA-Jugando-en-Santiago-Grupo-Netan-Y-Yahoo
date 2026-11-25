@@ -1,6 +1,7 @@
 
 package cl.triskeledu.aprendogame.data.remote
 
+import android.os.Build
 import cl.triskeledu.aprendogame.data.remote.api.ClientesApiService
 import cl.triskeledu.aprendogame.data.remote.api.LocalizacionesApiService
 import cl.triskeledu.aprendogame.data.remote.api.PremiosApiService
@@ -16,13 +17,26 @@ import java.util.concurrent.TimeUnit
 
 object RetrofitClient {
 
-    // Dirección del computador desde el emulador Android.
-    private const val HOST = "10.0.2.2"
+    private val isEmulator: Boolean
+        get() = Build.FINGERPRINT.startsWith("generic")
+                || Build.FINGERPRINT.startsWith("unknown")
+                || Build.MODEL.contains("google_sdk")
+                || Build.MODEL.contains("Emulator")
+                || Build.MODEL.contains("Android SDK built for x86")
+                || Build.HARDWARE.contains("goldfish")
+                || Build.HARDWARE.contains("ranchu")
+
+    // Dirección del computador: 10.0.2.2 para emulador, 127.0.0.1 para celular físico (con adb reverse).
+    private val HOST: String
+        get() = if (isEmulator) "10.0.2.2" else "127.0.0.1"
 
     // Microservicios Spring Boot.
-    private const val CLIENTES_URL = "http://$HOST:8081/"
-    private const val PREMIOS_URL = "http://$HOST:8082/"
-    private const val LOCALIZACIONES_URL = "http://$HOST:8083/"
+    private val CLIENTES_URL: String
+        get() = "http://$HOST:8081/"
+    private val PREMIOS_URL: String
+        get() = "http://$HOST:8082/"
+    private val LOCALIZACIONES_URL: String
+        get() = "http://$HOST:8083/"
 
     // Servicio del clima.
     private const val OPEN_METEO_URL =
