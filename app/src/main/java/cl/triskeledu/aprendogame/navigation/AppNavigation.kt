@@ -600,10 +600,32 @@ fun AppNavigation() {
                                     // Las cuentas predefinidas funcionan con
                                     // credenciales locales; los demás usuarios
                                     // deben autenticarse también en Spring Boot.
-                                        val sesion = remoteBackendRepository.login(
+                                        val loginResult = remoteBackendRepository.login(
                                             usuarioEncontrado.correo.trim().lowercase(),
                                             contrasenaLimpia
-                                        ).getOrThrow()
+                                        )
+                                        val sesion = if (loginResult.isSuccess) {
+                                            loginResult.getOrThrow()
+                                        } else {
+                                            // Si la cuenta existía solo localmente (creada antes del backend),
+                                            // la sincronizamos automáticamente en MySQL y obtenemos la sesión.
+                                            remoteBackendRepository.registrar(
+                                                RegistroBackendRequestDto(
+                                                    nombre = usuarioEncontrado.nombre.trim(),
+                                                    alias = usuarioEncontrado.alias.trim(),
+                                                    correo = usuarioEncontrado.correo.trim().lowercase(),
+                                                    contrasena = contrasenaLimpia,
+                                                    telefono = usuarioEncontrado.telefono.trim().ifEmpty { "912345678" },
+                                                    direccion = usuarioEncontrado.direccion.trim(),
+                                                    avatar = usuarioEncontrado.avatar,
+                                                    rol = usuarioEncontrado.rol.name
+                                                )
+                                            )
+                                            remoteBackendRepository.login(
+                                                usuarioEncontrado.correo.trim().lowercase(),
+                                                contrasenaLimpia
+                                            ).getOrThrow()
+                                        }
 
                                         check(sesion.usuario.rol == usuarioEncontrado.rol.name) {
                                             "El rol del backend no coincide con el usuario local"
