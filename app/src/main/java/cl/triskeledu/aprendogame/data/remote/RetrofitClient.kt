@@ -27,16 +27,31 @@ object RetrofitClient {
                 || Build.HARDWARE.contains("ranchu")
 
     // Dirección del computador: 10.0.2.2 para emulador, 127.0.0.1 para celular físico (con adb reverse).
-    private val HOST: String
+    val HOST: String
         get() = if (isEmulator) "10.0.2.2" else "127.0.0.1"
 
-    // Microservicios Spring Boot.
+    // API Gateway Centralizado (Puerto 8080)
+    val GATEWAY_URL: String
+        get() = "http://$HOST:8080/"
+
+    // Microservicios Spring Boot a través del Gateway unificado
     private val CLIENTES_URL: String
-        get() = "http://$HOST:8081/"
+        get() = GATEWAY_URL
     private val PREMIOS_URL: String
-        get() = "http://$HOST:8082/"
+        get() = GATEWAY_URL
     private val LOCALIZACIONES_URL: String
-        get() = "http://$HOST:8083/"
+        get() = GATEWAY_URL
+
+    // Obtener URL completa para recursos multimedia servidos desde el backend
+    fun resolverUrlMultimedia(rutaRelativa: String?): String? {
+        if (rutaRelativa.isNullOrBlank()) return null
+        return if (rutaRelativa.startsWith("http://") || rutaRelativa.startsWith("https://")) {
+            rutaRelativa
+        } else {
+            val limpia = if (rutaRelativa.startsWith("/")) rutaRelativa.substring(1) else rutaRelativa
+            "http://$HOST:8080/$limpia"
+        }
+    }
 
     // Servicio del clima.
     private const val OPEN_METEO_URL =

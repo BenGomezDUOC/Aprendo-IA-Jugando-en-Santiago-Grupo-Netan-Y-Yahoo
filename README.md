@@ -1,98 +1,168 @@
 # Aprendo IA Jugando en Santiago 🏙️🤖
 
-Plataforma móvil gamificada y georreferenciada para el aprendizaje de Inteligencia Artificial urbana, desarrollada para **Triskeledu SpA** en el marco de la asignatura **DSY1105 Desarrollo de Aplicaciones Móviles** (Duoc UC).
+Plataforma móvil gamificada, georreferenciada y basada en microservicios para la democratización del aprendizaje de conceptos de Inteligencia Artificial en entornos urbanos cotidianos, desarrollada para **Triskeledu SpA** en el marco del **Examen Final Transversal (EFT)** de la carrera de Informática en Duoc UC.
 
 ---
 
-## 👥 Integrantes del Equipo
-
-* **Benjamín Gómez** — *Arquitectura de Persistencia, Base de Datos Room SQLite, Patrón Repositorio, Notificaciones Nativas y Validación Desacoplada.*
-* **Fernando Zapata** — *Módulo de Geolocalización, Integración OpenStreetMap (OSMDroid), GPS en Vivo, Tarjetas de Proximidad y UI Outdoor.*
-* **Magdiel Reynoso** — *Módulo de Hardware Cámara, Escáner QR, Validación de Selfie Turística, Flujos de Roles y Navegación.*
-* **Juan Pablo Taulis** — *Módulo Multimedia, Reproducción de Cápsulas de Video sobre IA, Sistema de Gamificación y Puntuación.*
+## 1. Nombre del Proyecto
+**Aprendo IA Jugando en Santiago** (*Plataforma Móvil Gamificada con Microservicios y Geolocalización*)
 
 ---
 
-## 📖 Descripción del Proyecto
+## 2. Integrantes del Equipo
 
-Actualmente, los levantamientos de información en terreno suelen gestionarse de forma manual y desorganizada. **Aprendo IA Jugando en Santiago** resuelve esta problemática transformando el aprendizaje de la Inteligencia Artificial en una experiencia interactiva de gamificación urbana:
-- Permite que la ciudadanía recorra puntos emblemáticos de la capital (Plaza de Armas, Cerro Santa Lucía, Cerro San Cristóbal, La Moneda, Parque Forestal, Barrio Bellavista).
-- Detecta la proximidad mediante GPS en tiempo real.
-- Permite escanear códigos QR físicos en terreno y capturar una selfie frontal como evidencia de visita.
-- Desbloquea y reproduce cápsulas audiovisuales educativas sobre IA y acumula puntajes dinámicos en un entorno **100% offline y autónomo**.
-
----
-
-## 🏛️ Arquitectura y Tecnologías
-
-La aplicación implementa una arquitectura moderna, modular y desacoplada basada en las directrices oficiales de Android:
-
-* **Arquitectura:** MVVM (Model-View-ViewModel) + Clean Repository Pattern.
-* **UI Toolkit:** Jetpack Compose con Material Design 3 y Navigation Compose.
-* **Persistencia Local:** Room Database (SQLite) con Coroutines (`Flow` reactivo) y precarga inicial de datos (*Data Seeding*).
-* **Seguridad:** Encriptación y hashing de contraseñas con algoritmo PBKDF2 (`PasswordUtils`).
-
-### 📱 Recursos Nativos Integrados (IE 2.4.1)
-1. **Cámara del Dispositivo:** Implementada con **CameraX** para la lectura nativa de códigos QR y captura de selfies turísticas almacenadas internamente con `FileProvider`.
-2. **GPS y Geolocalización:** Integrada con **Google Play Services Location** (`FusedLocationProviderClient`) para obtener coordenadas precisas (latitud, longitud, altitud) y calcular distancias en metros.
-3. **Notificaciones del Sistema:** Implementada con `NotificationManager` y `NotificationCompat`, registrando un canal oficial (`NotificationChannel`) para emitir alertas emergentes en la barra de estado de Android ante logros y visitas validadas.
-
-### ✨ Animaciones Visuales Funcionales (IE 2.2.2)
-* `AnimatedVisibility` con `expandVertically() + fadeIn()` en mensajes de validación y errores de formularios.
-* `animateFloatAsState` con curvas `FastOutSlowInEasing` en las barras de progreso general y exploración.
-* `animateFloatAsState` (resorte *spring*) y `animateDpAsState` para retroalimentación táctil en la selección interactiva de avatares.
-* `Modifier.animateContentSize()` en tarjetas expandibles de la colección de cápsulas.
-* `slideInVertically()` y `slideOutVertically()` en la tarjeta emergente inferior de puntos en el mapa.
-
-### 🛡️ Lógica de Validación Centralizada y Desacoplada (IE 2.2.1)
-* **`FormularioValidator`:** Clase pura e independiente de la interfaz gráfica que centraliza las reglas de validación de campos (nombre, alias, correo con regex estándar, teléfono de 8-15 dígitos, contraseñas y confirmación). Acompañada de su suite de pruebas unitarias con JUnit.
-* **`SelfieValidator`:** Validador dedicado a la verificación de rostros y códigos QR en imágenes capturadas.
+| Integrante | Rol en el Proyecto | Responsabilidades y Aportes Técnicos Principales |
+| :--- | :--- | :--- |
+| **Fernando Zapata** | **Líder de Arquitectura y Microservicios** | Diseño e implementación de **Spring Cloud API Gateway** (8080), **Netflix Eureka Server** (8761), módulo de GPS en tiempo real con **Google Play Services Location** (`FusedLocationProviderClient`), validación de proximidad a monumentos y consumo de API meteorológica externa. |
+| **Benjamín Gómez** | **Persistencia y Transacciones** | Arquitectura de base de datos relacional MySQL (patrón Database-per-Service), persistencia local con **Room SQLite** en Android, implementación del patrón Repositorio y control transaccional de saldo de puntos. |
+| **Magdiel Reynoso** | **Hardware y Seguridad** | Módulo de hardware con **CameraX**, escaneo nativo de códigos QR físicos, captura y validación de selfies turísticas en terreno, y algoritmo de seguridad PBKDF2 con sal individual. |
+| **Juan Pablo Taulis** | **Gamificación y Multimedia** | Reproducción de cápsulas educativas audiovisuales sobre IA, sistema de puntuación acumulativa y niveles, canal de notificaciones emergentes del sistema y catálogo de recompensas. |
 
 ---
 
-## 🎭 Roles y Perfiles de Usuario (Sección 3.1)
+## 3. Funcionalidades Principales
 
-1. **Cliente / Jugador:**
-   - Explora el mapa de Santiago con marcadores interactivos.
-   - Escanea códigos QR físicos y toma selfies turísticas para validar visitas.
-   - Visualiza cápsulas audiovisuales sobre IA y consulta su progreso, historial y ranking.
-2. **Generador de Contenido:**
-   - Panel dedicado para crear, redactar y clasificar cápsulas educativas digitales sobre IA.
-3. **Administrador:**
-   - Gestión integral de puntos georreferenciados, alta de videos y generación de códigos QR asignados.
+### 📱 Aplicación Móvil (Android / Jetpack Compose)
+1. **Mapa Interactivo y Geolocalización en Vivo:** Visualización de marcadores de puntos de interés turístico de Santiago con cálculo de distancia en metros y tarjetas informativas.
+2. **Escaneo de Códigos QR Físicos con Cámara:** Detección automática en terreno mediante CameraX, validando que el código pertenezca a un punto turístico (+10 puntos).
+3. **Validación de Selfie en Terreno:** Captura fotográfica con almacenamiento en la galería como evidencia de visita a un hito patrimonial (+100 puntos extra).
+4. **Reproducción de Cápsulas Multimedia sobre IA:** Visualización de microaprendizajes en video clasificados por categorías (Machine Learning, Redes Neuronales, IA Generativa, Ética, Visión Artificial).
+5. **Persistencia Offline-First (Room SQLite):** Base de datos local para almacenar descubrimientos, usuarios, historial de visitas y notificaciones sin requerir conexión constante.
+6. **Formularios con Validación Estricta:** Verificación en tiempo real de correos electrónicos (RFC 5322), formato telefónico chileno (+569), nombres y contraseñas seguras.
+7. **Notificaciones Nativas del Sistema:** Alertas en barra de estado (`NotificationChannel`) ante desbloqueo de hitos y logros de gamificación.
+8. **Condiciones Meteorológicas en Tiempo Real:** Tarjeta informativa con temperatura y estado del clima en Santiago para alertar al usuario antes de salir.
+
+### ⚙️ Ecosistema Distribuido (Spring Boot 3 + Spring Cloud)
+1. **Service Discovery (Eureka Server):** Registro y resolución dinámica de microservicios sin direcciones IP cableadas.
+2. **API Gateway Centralizado:** Puerta de enlace unificada que gestiona enrutamiento inteligente, CORS y balanceo hacia los microservicios.
+3. **Servidor Multimedia Centralizado:** Almacenamiento y streaming de imágenes de puntos turísticos y miniaturas servidas desde el backend, optimizando el tamaño del APK.
+4. **Seguridad Criptográfica:** Algoritmo **PBKDF2WithHmacSHA512** para hashing de credenciales con prevención de ataques de temporización (`slowEquals`).
+5. **Control de Concurrencia e Idempotencia:** Prevención estricta de fraude que impide sumar puntos repetidos por el mismo código QR o selfie.
 
 ---
 
-## 🧪 Cuentas de Acceso Rápido para Pruebas
+## 4. Endpoints Utilizados (API Externa y Microservicios)
 
-Para facilitar la evaluación y testeo de todos los roles, se encuentran preconfiguradas las siguientes cuentas:
+### 🌐 API Externa (Clima en Santiago)
+* **Proveedor:** Open-Meteo Public Weather API
+* **Endpoint:** `GET https://api.open-meteo.com/v1/forecast?latitude=-33.4489&longitude=-70.6693&current_weather=true`
+* **Propósito:** Provee la temperatura actual, velocidad del viento y código meteorológico de Santiago en tiempo real.
 
-| Rol | Usuario / Alias | Correo | Contraseña |
+### 🚪 Spring Cloud API Gateway (Puerto `8080`)
+Punto de entrada único consumido por la aplicación móvil: `http://10.0.2.2:8080/` (emulador) o `http://127.0.0.1:8080/` (físico).
+
+#### 1. Microservicio de Clientes (`ms-clientes` vía Gateway: `/api/clientes/**`)
+* `POST /api/clientes/usuarios/registro` — Registro de nuevo jugador con validaciones estrictas y avatar.
+* `POST /api/clientes/usuarios/login` — Autenticación con verificación PBKDF2.
+* `GET /api/clientes/usuarios/{id}` — Consulta de perfil, nivel y puntos acumulados.
+* `PUT /api/clientes/usuarios/{id}/perfil` — Actualización de datos personales y avatar.
+* `PUT /api/clientes/usuarios/{id}/sumar-puntos?puntos={pts}` — Acreditación o descuento atómico de puntos.
+
+#### 2. Microservicio de Localizaciones y Multimedia (`ms-localizaciones` vía Gateway: `/api/localizaciones/**`)
+* `GET /api/localizaciones/puntos-interes` — Obtención del catálogo de los 8 puntos turísticos oficiales.
+* `GET /api/localizaciones/puntos-interes/{id}` — Detalle, coordenadas y radio de tolerancia de un monumento.
+* `POST /api/localizaciones/puntos-interes` — Creación de nuevo punto turístico por el Administrador.
+* `PUT /api/localizaciones/puntos-interes/{id}` — Edición de datos geográficos o descripción.
+* `DELETE /api/localizaciones/puntos-interes/{id}` — Eliminación protegida (bloquea borrado si tiene cápsulas activas).
+* `GET /api/localizaciones/capsulas` — Lista de cápsulas educativas de IA.
+* `GET /api/localizaciones/capsulas/validar-qr?codigo={codigo}` — Validación de existencia y estado del código QR.
+* `GET /api/localizaciones/multimedia/{nombre}` — Descarga de imágenes turísticas y miniaturas almacenadas en el backend.
+* `POST /api/localizaciones/multimedia/imagen` — Carga de nuevas fotografías de monumentos.
+
+#### 3. Microservicio de Premios y Gamificación (`ms-premios` vía Gateway: `/api/premios/**`)
+* `POST /api/premios/gamificacion/escanear-qr` — Procesa lectura QR, valida asociación al POI y suma +10 puntos.
+* `POST /api/premios/gamificacion/visita-selfie` — Registra fotografía en terreno y acredita bonificación de +100 puntos.
+* `POST /api/premios/gamificacion/video-visto` — Marca cápsula como visualizada en el historial.
+* `GET /api/premios/gamificacion/descubrimientos/{usuarioId}` — Consulta el historial de hitos descubiertos por jugador.
+* `GET /api/premios` — Consulta el catálogo de premios físicos canjeables.
+* `POST /api/premios/canjear?usuarioId={id}&premioId={id}` — Canje de recompensas por puntos.
+* `GET /api/premios/notificaciones/usuario/{usuarioId}` — Consulta el listado de notificaciones del jugador.
+* `PUT /api/premios/notificaciones/{id}/leida` — Marca una notificación como leída.
+
+---
+
+## 5. Pasos para Compilar y Ejecutar
+
+### Requisitos Previos
+* **Java:** JDK 21 instalado y configurado en el `PATH`.
+* **Motor de Base de Datos:** MySQL Server activo en el puerto `3306` (usuario `root`, contraseña vacía o según variable `MYSQL_PASSWORD`).
+* **Entorno Móvil:** Android Studio (Ladybug 2024.2+ o posterior) y emulador con Android 10+ (API 29+) o dispositivo físico con depuración USB.
+
+### Paso 1: Clonar los Repositorios
+```bash
+# Repositorio Frontend (Android):
+git clone https://github.com/BenGomezDUOC/Aprendo-IA-Jugando-en-Santiago-Grupo-Netan-Y-Yahoo.git
+
+# Repositorio Backend (Microservicios):
+git clone https://github.com/BenGomezDUOC/backend-jugando-ia-santiago.git
+```
+
+### Paso 2: Iniciar el Backend (5 Microservicios)
+1. Abre una terminal en la carpeta `backend-jugando-ia-santiago`.
+2. Ejecuta con doble clic el script automático:
+   ```cmd
+   iniciar_servicios.bat
+   ```
+   *(O en PowerShell: `.\iniciar_servicios.ps1`)*.
+3. El script compila y levanta en orden:
+   * **Eureka Server:** `http://localhost:8761`
+   * **ms-clientes:** `http://localhost:8081`
+   * **ms-localizaciones:** `http://localhost:8083`
+   * **ms-premios:** `http://localhost:8082`
+   * **API Gateway:** `http://localhost:8080`
+4. Comprueba en tu navegador que los 3 microservicios aparezcan registrados en [http://localhost:8761](http://localhost:8761).
+
+### Paso 3: Ejecutar la Aplicación Android
+1. Abre la carpeta `Aprendo-IA-Jugando-en-Santiago-Grupo-Netan-Y-Yahoo` en Android Studio.
+2. Espera la sincronización de Gradle (*Gradle Sync*).
+3. Selecciona tu dispositivo físico o emulador.
+4. Presiona **Run 'app' (Shift + F10)**.
+
+### Paso 4: Ejecutar Pruebas Unitarias del Frontend
+En la terminal del proyecto Android:
+```bash
+./gradlew testDebugUnitTest
+```
+*(Se ejecutan las 25 pruebas unitarias con resultado exitoso).*
+
+---
+
+## 6. Captura del APK Firmado y Llave (.jks)
+
+La aplicación ha sido empaquetada y firmada digitalmente para su distribución en producción bajo los esquemas de seguridad **v2 y v3** de Android.
+
+* **Ruta del APK firmado:** `app/build/outputs/apk/release/app-release.apk`
+* **Ruta de la llave criptográfica:** `keystore/release.jks`
+* **Alias de la llave:** `triskeledu-release`
+* **Entidad Emisora del Certificado:** `CN=Triskeledu SpA, OU=Informatica, O=Duoc UC, L=Santiago, ST=Santiago, C=CL`
+* **Algoritmo de Clave:** RSA 2048 bits / Validez 10.000 días
+* **Huella Digital SHA-256:** `b02e0ddfc6a241ef1eedcc01d07aac3ab3b363143f5e40263ea03c1b576af1f4`
+* **Comando de verificación oficial:**
+  ```cmd
+  apksigner verify --verbose --print-certs app\build\outputs\apk\release\app-release.apk
+  ```
+
+### 🖼️ Evidencia del APK Firmado y Llave .jks
+<!-- PLACEHOLDER: Guarda tu captura de pantalla de la terminal con apksigner y la carpeta keystore/ con el nombre 'apk_firmado_evidencia.png' dentro de docs/evidencias/ -->
+![Evidencia de APK Firmado y Archivo JKS](docs/evidencias/apk_firmado_evidencia.png)
+
+---
+
+## 📌 Evidencia de Trello con Planificación Distribuida
+
+El proyecto se gestionó bajo metodología ágil, dividiendo las épicas, historias de usuario y tareas técnicas entre todos los miembros del equipo:
+
+<!-- PLACEHOLDER: Guarda tu captura de pantalla de Trello con el nombre 'trello_tablero.png' dentro de docs/evidencias/ -->
+![Evidencia de Planificación en Trello](docs/evidencias/trello_tablero.png)
+
+* **Tablero Oficial:** [Acceso al Tablero Trello](https://trello.com) *(Reemplazar con enlace directo a tu tablero)*
+
+---
+
+## 🔑 Credenciales Predefinidas para Pruebas
+
+| Rol | Usuario / Alias | Correo Electrónico | Contraseña |
 | :--- | :--- | :--- | :--- |
 | **Administrador** | Administrador (`Admin`) | `admin@triskeledu.cl` | `123` |
 | **Generador de Contenido** | Contenido (`GenCont`) | `contenido@triskeledu.cl` | `123` |
-| **Cliente / Jugador** | *(Cualquier jugador registrado o creado desde la pantalla de Registro)* | *(Contraseña elegida al registrarse)* |
-
----
-
-## 🚀 Pasos para Compilar y Ejecutar
-
-### Requisitos Previos
-* **Android Studio:** Ladybug (2024.2.1+) o posterior.
-* **JDK:** Versión 17 o 21 (incluida en Android Studio).
-* **Dispositivo de prueba:** Teléfono físico Android (recomendado para probar cámara y GPS en vivo) o Emulador con Android 10.0+ (API 29+).
-
-### Instrucciones
-1. **Clonar el repositorio:**
-   ```bash
-   git clone https://github.com/BenGomezDUOC/Aprendo-IA-Jugando-en-Santiago-Grupo-Netan-Y-Yahoo.git
-   cd Aprendo-IA-Jugando-en-Santiago-Grupo-Netan-Y-Yahoo
-   ```
-2. **Abrir en Android Studio:**
-   - Inicia Android Studio, haz clic en **Open** y selecciona la carpeta clonada.
-   - Espera que finalice la sincronización inicial de Gradle (*Gradle Sync*).
-3. **Ejecutar Pruebas Unitarias:**
-   - En la pestaña *Project*, haz clic derecho sobre `app/src/test` y selecciona **Run 'Tests in 'test''**.
-4. **Ejecutar la Aplicación:**
-   - Selecciona tu dispositivo físico o emulador en la barra superior.
-   - Presiona el botón verde de **Play ▶ (Run 'app')** o pulsa `Shift + F10`.
+| **Cliente / Jugador** | *(Cualquier jugador registrado)* | *(Correo elegido al registrarse)* | *(Contraseña elegida)* |
