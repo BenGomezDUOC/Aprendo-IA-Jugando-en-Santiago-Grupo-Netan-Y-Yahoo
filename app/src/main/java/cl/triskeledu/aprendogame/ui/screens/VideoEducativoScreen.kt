@@ -12,6 +12,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -200,6 +203,14 @@ fun VideoEducativoScreen(
     ) {
 
         mutableStateOf<VideoView?>(null)
+    }
+
+    var modoPantallaCompleta by remember {
+        mutableStateOf(false)
+    }
+
+    var estaReproduciendo by remember {
+        mutableStateOf(false)
     }
 
     // Evita registrar dos veces la finalización.
@@ -544,7 +555,7 @@ fun VideoEducativoScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(220.dp),
+                            .height(if (modoPantallaCompleta) 360.dp else 220.dp),
                         contentAlignment = Alignment.Center
                     ) {
 
@@ -609,6 +620,7 @@ fun VideoEducativoScreen(
 
                                         setOnCompletionListener {
 
+                                            estaReproduciendo = false
                                             finalizarVideo()
                                         }
                                     }
@@ -690,6 +702,7 @@ fun VideoEducativoScreen(
                                             reproductor.start()
 
                                             videoIniciado = true
+                                            estaReproduciendo = true
                                         }
                                     }
                                 },
@@ -713,6 +726,28 @@ fun VideoEducativoScreen(
                                     modifier = Modifier.size(42.dp)
                                 )
                             }
+                        }
+
+                        // Botón de pantalla completa / ampliar en esquina superior derecha
+                        IconButton(
+                            onClick = {
+                                modoPantallaCompleta = !modoPantallaCompleta
+                            },
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(8.dp)
+                                .background(
+                                    color = Color(0x99000000),
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                                .size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (modoPantallaCompleta) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                                contentDescription = if (modoPantallaCompleta) "Reducir reproductor" else "Pantalla completa",
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp)
+                            )
                         }
                     }
 

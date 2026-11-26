@@ -152,10 +152,10 @@ La aplicación ha sido empaquetada y firmada digitalmente para su distribución 
 
 El proyecto se gestionó bajo metodología ágil, dividiendo las épicas, historias de usuario y tareas técnicas entre todos los miembros del equipo:
 
-<!-- PLACEHOLDER: Guarda tu captura de pantalla de Trello con el nombre 'trello_tablero.png' dentro de docs/evidencias/ -->
+
 ![Evidencia de Planificación en Trello](docs/evidencias/trello_tablero.png)
 
-* **Tablero Oficial:** [Acceso al Tablero Trello](https://trello.com) *(Reemplazar con enlace directo a tu tablero)*
+* **Tablero Oficial:** [Acceso al Tablero Trello](https://trello.com/b/Dp4CqmeK/gestion-colaboracion-del-proyecto-aprendo-ia-jugando-en-santiago)
 
 ---
 

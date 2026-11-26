@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Códigos QR de Prueba - Aprendo IA Jugando en Santiago</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+            margin: 0;
+            padding: 30px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 {
+            color: #38bdf8;
+            margin-bottom: 6px;
+            text-align: center;
+        }
+        p.subtitle {
+            color: #94a3b8;
+            margin-top: 0;
+            margin-bottom: 30px;
+            text-align: center;
+            max-width: 600px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+            width: 100%;
+            max-width: 960px;
+        }
+        .card {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 16px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+        }
+        .card h2 {
+            font-size: 1.15rem;
+            color: #f1f5f9;
+            margin: 12px 0 4px 0;
+        }
+        .card .badge {
+            background-color: #0284c7;
+            color: #ffffff;
+            font-size: 0.75rem;
+            font-weight: bold;
+            padding: 4px 10px;
+            border-radius: 9999px;
+            margin-bottom: 8px;
+            letter-spacing: 0.5px;
+        }
+        .card p.desc {
+            color: #94a3b8;
+            font-size: 0.85rem;
+            margin: 0;
+        }
+        .qr-wrapper {
+            background-color: #ffffff;
+            padding: 12px;
+            border-radius: 12px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: 10px;
+        }
+        .qr-wrapper img {
+            width: 180px;
+            height: 180px;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Códigos QR Oficiales del Juego</h1>
+    <p class="subtitle">Abre la cámara del juego desde tu teléfono en <b>Escanear QR</b> y apunta a cualquiera de estos códigos para probar la validación y suma de puntos en vivo.</p>
+
+    <div class="grid">
+        <!-- 1. Plaza de Armas -->
+        <div class="card">
+            <span class="badge">+10 PUNTOS</span>
+            <div class="qr-wrapper">
+                <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=QR_PLAZA_ARMAS" alt="QR Plaza de Armas">
+            </div>
+            <h2>Plaza de Armas</h2>
+            <p class="desc">Código: <code>QR_PLAZA_ARMAS</code></p>
+        </div>
+
+        <!-- 2. Cerro Santa Lucía -->
+        <div class="card">
+            <span class="badge">+10 PUNTOS</span>
+            <div class="qr-wrapper">
+                <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=QR_SANTA_LUCIA" alt="QR Cerro Santa Lucía">
+            </div>
+            <h2>Cerro Santa Lucía</h2>
+            <p class="desc">Código: <code>QR_SANTA_LUCIA</code></p>
+        </div>
+
+        <!-- 3. Cerro San Cristóbal -->
+        <div class="card">
+            <span class="badge">+10 PUNTOS</span>
+            <div class="qr-wrapper">
+                <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=QR_SAN_CRISTOBAL" alt="QR Cerro San Cristóbal">
+            </div>
+            <h2>Cerro San Cristóbal</h2>
+            <p class="desc">Código: <code>QR_SAN_CRISTOBAL</code></p>
+        </div>
+
+        <!-- 4. Palacio de La Moneda -->
+        <div class="card">
+            <span class="badge">+10 PUNTOS</span>
+            <div class="qr-wrapper">
+                <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=QR_LA_MONEDA" alt="QR Palacio de La Moneda">
+            </div>
+            <h2>Palacio de La Moneda</h2>
+            <p class="desc">Código: <code>QR_LA_MONEDA</code></p>
+        </div>
+
+        <!-- 5. Parque Forestal -->
+        <div class="card">
+            <span class="badge">+10 PUNTOS</span>
+            <div class="qr-wrapper">
+                <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=QR_PARQUE_FORESTAL" alt="QR Parque Forestal">
+            </div>
+            <h2>Parque Forestal</h2>
+            <p class="desc">Código: <code>QR_PARQUE_FORESTAL</code></p>
+        </div>
+
+        <!-- 6. Barrio Bellavista -->
+        <div class="card">
+            <span class="badge">+10 PUNTOS</span>
+            <div class="qr-wrapper">
+                <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=QR_BELLAVISTA" alt="QR Barrio Bellavista">
+            </div>
+            <h2>Barrio Bellavista</h2>
+            <p class="desc">Código: <code>QR_BELLAVISTA</code></p>
+        </div>
+    </div>
+
+</body>
+</html>
